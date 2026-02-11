@@ -1,0 +1,20 @@
+# Dependências
+node_modules/
+
+# Configuração do Supabase (contém credenciais)
+js/supabase-config.js
+
+# IDE / Editor
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# Sistema operacional
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*

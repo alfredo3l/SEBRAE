@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEBRAE - Aceite LGPD - Lista de Parceiros</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- CSS Customizado -->
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+
+    <!-- ========== HEADER / NAVBAR ========== -->
+    <nav class="navbar-custom">
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <a class="navbar-brand" href="/">
+                <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
+                <span>Aceite LGPD</span>
+            </a>
+            <div class="navbar-right">
+                <div class="user-info">
+                    <i class="fas fa-user"></i>
+                    <span>admin</span>
+                </div>
+                <button class="btn-menu" title="Menu">
+                    <i class="fas fa-ellipsis-vertical"></i>
+                </button>
+                <a href="#" class="btn-sair">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sair
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========== CONTEÚDO PRINCIPAL ========== -->
+    <div class="main-container">
+
+        <!-- Cabeçalho da Página -->
+        <div class="page-header">
+            <h2 class="page-title">
+                <i class="fas fa-list"></i>
+                Lista de Parceiros
+            </h2>
+            <div class="page-actions">
+                <button class="btn-novo-parceiro" onclick="abrirModalCadastro()">
+                    <i class="fas fa-user-plus"></i>
+                    Novo Parceiro
+                </button>
+                <a href="#" class="btn-buscar">
+                    <i class="fas fa-search"></i>
+                    Buscar Parceiro
+                </a>
+                <a href="/" class="btn-inicio">
+                    <i class="fas fa-home"></i>
+                    Início
+                </a>
+            </div>
+        </div>
+
+        <!-- Card de Filtros -->
+        <div class="filter-card">
+            <div class="filter-row">
+                <div class="filter-group" style="flex: 2;">
+                    <label><i class="fas fa-search"></i> Pesquisar</label>
+                    <input type="text" id="filtro-pesquisa" placeholder="Nome, CPF, Account ID ou Telefone">
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-bookmark"></i> Status do Termo</label>
+                    <select id="filtro-status">
+                        <option value="">Todos</option>
+                        <option value="aceito">Aceito</option>
+                        <option value="nao_aceito">Não Aceito</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-phone"></i> Telefone</label>
+                    <select id="filtro-telefone">
+                        <option value="">Todos</option>
+                        <option value="com">Com Telefone</option>
+                        <option value="sem">Sem Telefone</option>
+                    </select>
+                </div>
+                <button class="btn-filtrar" onclick="filtrarParceiros()">
+                    <i class="fas fa-filter"></i>
+                    Filtrar
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabela de Parceiros -->
+        <div class="table-container">
+            <table class="table-custom" id="tabela-parceiros">
+                <thead>
+                    <tr>
+                        <th>CPF</th>
+                        <th>Nome/Razão Social</th>
+                        <th>Telefone</th>
+                        <th>Account ID</th>
+                        <th>Termo Aceito</th>
+                        <th>Assinatura Digital</th>
+                        <th>Enviado PIIq</th>
+                        <th>Data Envio</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-parceiros">
+                    <!-- Dados carregados dinamicamente do Supabase -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- ========== MODAL CADASTRO DE PARCEIRO ========== -->
+    <div class="modal-overlay" id="modal-cadastro" style="display: none;">
+        <div class="modal-cadastro-card">
+            <div class="modal-cadastro-header">
+                <h3>
+                    <i class="fas fa-user-plus"></i>
+                    Cadastrar Novo Parceiro
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalCadastro()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <!-- Mensagem de Sucesso -->
+                <div class="cadastro-sucesso" id="cadastro-sucesso" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="cadastro-sucesso-msg">Parceiro cadastrado com sucesso!</span>
+                </div>
+                <!-- Mensagem de Erro -->
+                <div class="cadastro-erro" id="cadastro-erro" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="cadastro-erro-msg">Erro ao cadastrar parceiro.</span>
+                </div>
+
+                <form id="form-cadastro" onsubmit="cadastrarParceiro(event)">
+                    <div class="modal-form-group">
+                        <label for="cad-nome">
+                            <i class="fas fa-user"></i> Nome / Razão Social <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="cad-nome" 
+                            placeholder="Digite o nome completo"
+                            required
+                            maxlength="200"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="cad-cpf">
+                            <i class="fas fa-id-card"></i> CPF <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="cad-cpf" 
+                            placeholder="000.000.000-00"
+                            required
+                            maxlength="14"
+                            oninput="mascaraCPF(this)"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="cad-telefone">
+                            <i class="fas fa-phone"></i> Telefone <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="cad-telefone" 
+                            placeholder="(00)00000-0000"
+                            required
+                            maxlength="15"
+                            oninput="mascaraTelefone(this)"
+                        >
+                    </div>
+                    <div class="modal-form-actions">
+                        <button type="button" class="btn-cancelar" onclick="fecharModalCadastro()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn-salvar" id="btn-salvar">
+                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Supabase JS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase Config -->
+    <script src="js/supabase-config.js"></script>
+    <!-- Autenticação -->
+    <script src="js/auth.js"></script>
+    <!-- JS Customizado -->
+    <script src="js/app.js"></script>
+</body>
+</html>

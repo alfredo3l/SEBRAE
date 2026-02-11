@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEBRAE - Aceite LGPD - Detalhe do Parceiro</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- CSS Customizado -->
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+
+    <!-- ========== HEADER / NAVBAR ========== -->
+    <nav class="navbar-custom">
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <a class="navbar-brand" href="/">
+                <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
+                <span>Aceite LGPD</span>
+            </a>
+            <div class="navbar-right">
+                <div class="user-info">
+                    <i class="fas fa-user"></i>
+                    <span>admin</span>
+                </div>
+                <button class="btn-menu" title="Menu">
+                    <i class="fas fa-ellipsis-vertical"></i>
+                </button>
+                <a href="#" class="btn-sair">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sair
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========== SETAS DE NAVEGAÇÃO ========== -->
+    <button class="nav-arrow nav-arrow-left" onclick="navegarParceiro('anterior')" title="Parceiro anterior">
+        <i class="fas fa-chevron-left"></i>
+    </button>
+    <button class="nav-arrow nav-arrow-right" onclick="navegarParceiro('proximo')" title="Próximo parceiro">
+        <i class="fas fa-chevron-right"></i>
+    </button>
+
+    <!-- ========== CONTEÚDO PRINCIPAL ========== -->
+    <div class="main-container">
+
+        <!-- Cabeçalho do Detalhe -->
+        <div class="detail-header">
+            <h2 class="detail-name">
+                <i class="fas fa-user-circle"></i>
+                <span id="parceiro-nome">Carregando...</span>
+            </h2>
+            <div class="detail-actions">
+                <button class="btn-editar-parceiro" onclick="abrirModalEdicao()">
+                    <i class="fas fa-edit"></i>
+                    Editar
+                </button>
+                <button class="btn-enviar-termo" onclick="enviarTermo()">
+                    <i class="fas fa-paper-plane"></i>
+                    Enviar Termo
+                </button>
+                <a href="/" class="btn-voltar">
+                    <i class="fas fa-arrow-left"></i>
+                    Voltar
+                </a>
+            </div>
+        </div>
+
+        <!-- Card - Informações do Parceiro -->
+        <div class="info-card">
+            <div class="info-card-header">
+                <i class="fas fa-info-circle"></i>
+                Informações do Parceiro
+            </div>
+            <div class="info-card-body">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Nome/Razão Social:</label>
+                        <span id="info-nome">-</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Termo Aceito:</label>
+                        <span id="info-termo">-</span>
+                    </div>
+                    <div class="info-item">
+                        <label>CPF:</label>
+                        <span id="info-cpf">-</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Account ID:</label>
+                        <span id="info-account">-</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Telefone:</label>
+                        <span id="info-telefone">-</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Situação:</label>
+                        <span><span class="badge-situacao-inativo" id="info-situacao">-</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card - Validações -->
+        <div class="info-card">
+            <div class="info-card-header">
+                <i class="fas fa-check-double"></i>
+                Validações
+            </div>
+            <div class="validacoes-container" id="validacoes-container">
+                <!-- Carregado dinamicamente -->
+            </div>
+        </div>
+
+        <!-- Mensagem Informativa -->
+        <div class="info-message" style="display: none;">
+            <i class="fas fa-info-circle"></i>
+            <span></span>
+        </div>
+
+    </div>
+
+    <!-- ========== MODAL EDIÇÃO DE PARCEIRO ========== -->
+    <div class="modal-overlay" id="modal-edicao" style="display: none;">
+        <div class="modal-cadastro-card">
+            <div class="modal-cadastro-header">
+                <h3>
+                    <i class="fas fa-edit"></i>
+                    Editar Parceiro
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalEdicao()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <!-- Mensagem de Sucesso -->
+                <div class="cadastro-sucesso" id="edicao-sucesso" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="edicao-sucesso-msg">Parceiro atualizado com sucesso!</span>
+                </div>
+                <!-- Mensagem de Erro -->
+                <div class="cadastro-erro" id="edicao-erro" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="edicao-erro-msg">Erro ao atualizar parceiro.</span>
+                </div>
+
+                <form id="form-edicao" onsubmit="salvarEdicao(event)">
+                    <input type="hidden" id="edit-id">
+                    <div class="modal-form-group">
+                        <label for="edit-nome">
+                            <i class="fas fa-user"></i> Nome / Razão Social <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="edit-nome" 
+                            placeholder="Digite o nome completo"
+                            required
+                            maxlength="200"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-cpf">
+                            <i class="fas fa-id-card"></i> CPF <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="edit-cpf" 
+                            placeholder="000.000.000-00"
+                            required
+                            maxlength="14"
+                            oninput="mascaraCPF(this)"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-telefone">
+                            <i class="fas fa-phone"></i> Telefone <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="edit-telefone" 
+                            placeholder="(00)00000-0000"
+                            required
+                            maxlength="15"
+                            oninput="mascaraTelefone(this)"
+                        >
+                    </div>
+                    <div class="modal-form-actions">
+                        <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
+                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Supabase JS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase Config -->
+    <script src="js/supabase-config.js"></script>
+    <!-- Autenticação -->
+    <script src="js/auth.js"></script>
+    <!-- JS Customizado -->
+    <script src="js/app.js"></script>
+</body>
+</html>
