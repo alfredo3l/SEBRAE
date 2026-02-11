@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "SEBRAE - Sistema de Aceite LGPD",
   "scripts": {
+    "build": "node build.js",
     "dev": "serve -l 3000",
     "start": "serve -l 3000"
   },
