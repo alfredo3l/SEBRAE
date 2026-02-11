@@ -189,13 +189,54 @@ async function navegarParceiro(direcao) {
 }
 
 /**
- * Envia o termo LGPD via WhatsApp
+ * Envia o termo LGPD via webhook (n8n)
  */
-function enviarTermo() {
-    const nome = document.getElementById('parceiro-nome')?.textContent || 'Parceiro';
+async function enviarTermo() {
+    if (!parceiroAtual) {
+        alert('Erro: dados do parceiro não carregados.');
+        return;
+    }
 
-    if (confirm(`Deseja enviar o termo LGPD para ${nome} via WhatsApp?`)) {
-        alert('Termo LGPD enviado com sucesso via WhatsApp!');
+    const nome = parceiroAtual.nome_razao_social;
+    const cpf = parceiroAtual.cpf;
+    const telefone = parceiroAtual.telefone;
+
+    if (!confirm(`Deseja enviar o termo LGPD para ${nome} via WhatsApp?`)) {
+        return;
+    }
+
+    // Desabilita o botão durante o envio
+    const btnEnviar = document.querySelector('.btn-enviar-termo');
+    if (btnEnviar) {
+        btnEnviar.disabled = true;
+        btnEnviar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    }
+
+    try {
+        const response = await fetch('https://n8n.alfredooliveira.com.br/webhook/fba3c3cd-5196-4b1b-be0f-9f47e2705258', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nome_razao_social: nome,
+                cpf: cpf,
+                telefone: telefone
+            })
+        });
+
+        if (response.ok) {
+            alert('Termo LGPD enviado com sucesso via WhatsApp!');
+        } else {
+            alert('Erro ao enviar o termo. Tente novamente.');
+            console.error('Webhook respondeu com status:', response.status);
+        }
+    } catch (err) {
+        alert('Erro de conexão ao enviar o termo. Verifique sua internet.');
+        console.error('Erro ao chamar webhook:', err);
+    } finally {
+        if (btnEnviar) {
+            btnEnviar.disabled = false;
+            btnEnviar.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Termo';
+        }
     }
 }
 
