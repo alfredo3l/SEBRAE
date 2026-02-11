@@ -1,9 +1,6 @@
 # Dependências
 node_modules/
 
-# Configuração do Supabase (contém credenciais)
-js/supabase-config.js
-
 # IDE / Editor
 .cursor/
 .vscode/
