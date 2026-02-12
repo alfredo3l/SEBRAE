@@ -294,8 +294,8 @@ body {
 .badge-sim {
     background-color: #28a745;
     color: #fff;
-    padding: 3px 10px;
-    border-radius: 12px;
+    padding: 3px 12px;
+    border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 600;
     display: inline-flex;
@@ -306,8 +306,8 @@ body {
 .badge-nao {
     background-color: #f8d7da;
     color: #721c24;
-    padding: 3px 10px;
-    border-radius: 12px;
+    padding: 3px 12px;
+    border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 600;
     display: inline-flex;
@@ -523,6 +523,14 @@ body {
 .info-item span {
     font-size: 0.9rem;
     color: #333;
+}
+
+.info-item .badge-sim {
+    color: #fff;
+}
+
+.info-item .badge-nao {
+    color: #721c24;
 }
 
 .info-item .badge-situacao-inativo {

@@ -3,6 +3,19 @@
    Integração com Supabase
    ============================================ */
 
+// ===== Funções Utilitárias =====
+
+/**
+ * Formata data para dd/mm/aaaa
+ */
+function formatarData(dataStr) {
+    const d = new Date(dataStr);
+    const dia = String(d.getDate()).padStart(2, '0');
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const ano = d.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+}
+
 // ===== Funções de Acesso ao Banco (Supabase) =====
 
 /**
@@ -61,9 +74,7 @@ function criarLinhaParceiro(p) {
         : '<span class="badge-nao-x"><i class="fas fa-times"></i> Não</span>';
 
     // Data Envio
-    const dataEnvio = p.data_envio
-        ? new Date(p.data_envio).toLocaleDateString('pt-BR')
-        : '-';
+    const dataEnvio = p.data_envio || '-';
 
     // Ações
     let acoes = `
@@ -189,54 +200,97 @@ async function navegarParceiro(direcao) {
 }
 
 /**
- * Envia o termo LGPD via webhook (n8n)
+ * Abre o modal de confirmação para enviar o termo LGPD
  */
-async function enviarTermo() {
+function enviarTermo() {
     if (!parceiroAtual) {
         alert('Erro: dados do parceiro não carregados.');
         return;
     }
 
-    const nome = parceiroAtual.nome_razao_social;
-    const cpf = parceiroAtual.cpf;
-    const telefone = parceiroAtual.telefone;
+    const modal = document.getElementById('modal-enviar-termo');
+    if (!modal) return;
 
-    if (!confirm(`Deseja enviar o termo LGPD para ${nome} via WhatsApp?`)) {
-        return;
-    }
+    // Preenche os dados do parceiro no modal
+    document.getElementById('envio-nome').textContent = parceiroAtual.nome_razao_social;
+    document.getElementById('envio-cpf').textContent = parceiroAtual.cpf;
+    document.getElementById('envio-telefone').textContent = parceiroAtual.telefone;
 
-    // Desabilita o botão durante o envio
-    const btnEnviar = document.querySelector('.btn-enviar-termo');
-    if (btnEnviar) {
-        btnEnviar.disabled = true;
-        btnEnviar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    // Limpa mensagens anteriores
+    document.getElementById('envio-sucesso').style.display = 'none';
+    document.getElementById('envio-erro').style.display = 'none';
+    document.getElementById('envio-confirmacao').style.display = 'block';
+
+    // Restaura botão
+    const btn = document.getElementById('btn-confirmar-envio');
+    btn.disabled = false;
+    btn.querySelector('.btn-text').style.display = 'flex';
+    btn.querySelector('.spinner').style.display = 'none';
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Fecha o modal de enviar termo
+ */
+function fecharModalEnviarTermo() {
+    const modal = document.getElementById('modal-enviar-termo');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
     }
+}
+
+/**
+ * Confirma e envia o termo LGPD via webhook (n8n)
+ */
+async function confirmarEnvioTermo() {
+    const btn = document.getElementById('btn-confirmar-envio');
+    const sucessoDiv = document.getElementById('envio-sucesso');
+    const erroDiv = document.getElementById('envio-erro');
+    const erroMsg = document.getElementById('envio-erro-msg');
+
+    // Esconde mensagens anteriores
+    sucessoDiv.style.display = 'none';
+    erroDiv.style.display = 'none';
+
+    // Loading
+    btn.disabled = true;
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.spinner').style.display = 'inline-block';
 
     try {
         const response = await fetch('https://n8n.alfredooliveira.com.br/webhook/fba3c3cd-5196-4b1b-be0f-9f47e2705258', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                nome_razao_social: nome,
-                cpf: cpf,
-                telefone: telefone
+                nome_razao_social: parceiroAtual.nome_razao_social,
+                cpf: parceiroAtual.cpf,
+                telefone: parceiroAtual.telefone
             })
         });
 
         if (response.ok) {
-            alert('Termo LGPD enviado com sucesso via WhatsApp!');
+            document.getElementById('envio-sucesso-msg').textContent = 'Termo LGPD enviado com sucesso via WhatsApp!';
+            sucessoDiv.style.display = 'flex';
+
+            setTimeout(() => {
+                fecharModalEnviarTermo();
+            }, 2000);
         } else {
-            alert('Erro ao enviar o termo. Tente novamente.');
+            erroMsg.textContent = 'Erro ao enviar o termo. Tente novamente.';
+            erroDiv.style.display = 'flex';
             console.error('Webhook respondeu com status:', response.status);
         }
     } catch (err) {
-        alert('Erro de conexão ao enviar o termo. Verifique sua internet.');
+        erroMsg.textContent = 'Erro de conexão. Verifique sua internet.';
+        erroDiv.style.display = 'flex';
         console.error('Erro ao chamar webhook:', err);
     } finally {
-        if (btnEnviar) {
-            btnEnviar.disabled = false;
-            btnEnviar.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Termo';
-        }
+        btn.disabled = false;
+        btn.querySelector('.btn-text').style.display = 'flex';
+        btn.querySelector('.spinner').style.display = 'none';
     }
 }
 
@@ -617,6 +671,10 @@ document.addEventListener('click', function (e) {
     if (modalEdicao && e.target === modalEdicao) {
         fecharModalEdicao();
     }
+    const modalEnviarTermo = document.getElementById('modal-enviar-termo');
+    if (modalEnviarTermo && e.target === modalEnviarTermo) {
+        fecharModalEnviarTermo();
+    }
 });
 
 // Fechar modal com ESC
@@ -624,6 +682,7 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         fecharModalCadastro();
         fecharModalEdicao();
+        fecharModalEnviarTermo();
     }
 });
 
