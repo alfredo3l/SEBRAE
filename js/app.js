@@ -441,6 +441,94 @@ function abrirModalEdicao() {
 }
 
 /**
+ * Abre o modal de confirmação para excluir o parceiro
+ */
+function deletarParceiro() {
+    if (!parceiroAtual) return;
+
+    const modal = document.getElementById('modal-excluir');
+    if (!modal) return;
+
+    // Preenche os dados do parceiro no modal
+    document.getElementById('excluir-nome').textContent = parceiroAtual.nome_razao_social;
+    document.getElementById('excluir-cpf').textContent = parceiroAtual.cpf;
+    document.getElementById('excluir-telefone').textContent = parceiroAtual.telefone;
+
+    // Limpa mensagens anteriores
+    document.getElementById('excluir-sucesso').style.display = 'none';
+    document.getElementById('excluir-erro').style.display = 'none';
+    document.getElementById('excluir-confirmacao').style.display = 'block';
+
+    // Restaura botão
+    const btn = document.getElementById('btn-confirmar-excluir');
+    btn.disabled = false;
+    btn.querySelector('.btn-text').style.display = 'flex';
+    btn.querySelector('.spinner').style.display = 'none';
+
+    // Fecha o modal de edição e abre o de exclusão
+    fecharModalEdicao();
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Fecha o modal de exclusão
+ */
+function fecharModalExcluir() {
+    const modal = document.getElementById('modal-excluir');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Confirma e exclui o parceiro do banco de dados
+ */
+async function confirmarExclusao() {
+    const btn = document.getElementById('btn-confirmar-excluir');
+    const sucessoDiv = document.getElementById('excluir-sucesso');
+    const erroDiv = document.getElementById('excluir-erro');
+    const erroMsg = document.getElementById('excluir-erro-msg');
+
+    sucessoDiv.style.display = 'none';
+    erroDiv.style.display = 'none';
+
+    // Loading
+    btn.disabled = true;
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.spinner').style.display = 'inline-block';
+
+    try {
+        const { error } = await supabaseClient
+            .from('parceiros')
+            .delete()
+            .eq('id', parceiroAtual.id);
+
+        if (error) {
+            erroMsg.textContent = 'Erro ao excluir: ' + error.message;
+            erroDiv.style.display = 'flex';
+            return;
+        }
+
+        document.getElementById('excluir-sucesso-msg').textContent = `Parceiro "${parceiroAtual.nome_razao_social}" excluído com sucesso!`;
+        sucessoDiv.style.display = 'flex';
+
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 1500);
+
+    } catch (err) {
+        erroMsg.textContent = 'Erro inesperado. Tente novamente.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.querySelector('.btn-text').style.display = 'flex';
+        btn.querySelector('.spinner').style.display = 'none';
+    }
+}
+
+/**
  * Fecha o modal de edição
  */
 function fecharModalEdicao() {
@@ -675,6 +763,10 @@ document.addEventListener('click', function (e) {
     if (modalEnviarTermo && e.target === modalEnviarTermo) {
         fecharModalEnviarTermo();
     }
+    const modalExcluir = document.getElementById('modal-excluir');
+    if (modalExcluir && e.target === modalExcluir) {
+        fecharModalExcluir();
+    }
 });
 
 // Fechar modal com ESC
@@ -683,6 +775,7 @@ document.addEventListener('keydown', function (e) {
         fecharModalCadastro();
         fecharModalEdicao();
         fecharModalEnviarTermo();
+        fecharModalExcluir();
     }
 });
 

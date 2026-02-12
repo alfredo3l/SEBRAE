@@ -188,14 +188,20 @@
                             oninput="mascaraTelefone(this)"
                         >
                     </div>
-                    <div class="modal-form-actions">
-                        <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
-                            <i class="fas fa-times"></i> Cancelar
-                        </button>
-                        <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
-                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                    <div class="modal-form-actions" style="justify-content: space-between;">
+                        <button type="button" class="btn-deletar" id="btn-deletar-parceiro" onclick="deletarParceiro()">
+                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir</span>
                             <span class="spinner" style="display:none;"></span>
                         </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                            <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
+                                <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -251,6 +257,63 @@
                         </button>
                         <button type="button" class="btn-salvar" id="btn-confirmar-envio" onclick="confirmarEnvioTermo()" style="background-color: #28a745;">
                             <span class="btn-text"><i class="fas fa-paper-plane"></i> Enviar</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL CONFIRMAÇÃO EXCLUIR PARCEIRO ========== -->
+    <div class="modal-overlay" id="modal-excluir" style="display: none;">
+        <div class="modal-cadastro-card" style="max-width: 450px;">
+            <div class="modal-cadastro-header" style="background-color: #dc3545;">
+                <h3>
+                    <i class="fas fa-trash-alt"></i>
+                    Excluir Parceiro
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalExcluir()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <!-- Mensagem de Sucesso -->
+                <div class="cadastro-sucesso" id="excluir-sucesso" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="excluir-sucesso-msg">Parceiro excluído com sucesso!</span>
+                </div>
+                <!-- Mensagem de Erro -->
+                <div class="cadastro-erro" id="excluir-erro" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="excluir-erro-msg">Erro ao excluir parceiro.</span>
+                </div>
+
+                <div id="excluir-confirmacao">
+                    <p style="font-size: 0.95rem; color: #333; margin-bottom: 15px;">
+                        <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+                        Tem certeza que deseja <strong>excluir</strong> o parceiro abaixo? Essa ação não pode ser desfeita.
+                    </p>
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                        <div style="margin-bottom: 8px;">
+                            <strong style="color: #0056a6; font-size: 0.8rem;">Nome/Razão Social:</strong><br>
+                            <span id="excluir-nome" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong style="color: #0056a6; font-size: 0.8rem;">CPF:</strong><br>
+                            <span id="excluir-cpf" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                        <div>
+                            <strong style="color: #0056a6; font-size: 0.8rem;">Telefone:</strong><br>
+                            <span id="excluir-telefone" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                    </div>
+                    <div class="modal-form-actions">
+                        <button type="button" class="btn-cancelar" onclick="fecharModalExcluir()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn-deletar" id="btn-confirmar-excluir" onclick="confirmarExclusao()">
+                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir</span>
                             <span class="spinner" style="display:none;"></span>
                         </button>
                     </div>
