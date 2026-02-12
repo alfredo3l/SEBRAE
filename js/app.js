@@ -255,6 +255,23 @@ function enviarTermo() {
         return;
     }
 
+    // Verifica se o parceiro já aceitou o termo
+    if (parceiroAtual.termo_aceito) {
+        const modal = document.getElementById('modal-enviar-termo');
+        if (!modal) return;
+
+        document.getElementById('envio-sucesso').style.display = 'none';
+        document.getElementById('envio-confirmacao').style.display = 'none';
+
+        const erroDiv = document.getElementById('envio-erro');
+        document.getElementById('envio-erro-msg').textContent = `O parceiro "${parceiroAtual.nome_razao_social}" já possui o termo LGPD assinado no sistema.`;
+        erroDiv.style.display = 'flex';
+
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+
     const modal = document.getElementById('modal-enviar-termo');
     if (!modal) return;
 
