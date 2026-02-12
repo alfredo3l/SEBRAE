@@ -16,6 +16,46 @@ function formatarData(dataStr) {
     return `${dia}/${mes}/${ano}`;
 }
 
+/**
+ * Verifica se o PDF do termo existe no bucket do Supabase
+ */
+async function verificarTermoPDF(cpf) {
+    const cpfNumeros = cpf.replace(/\D/g, '');
+    const nomeArquivo = `TermosAceite_${cpfNumeros}.pdf`;
+
+    const { data, error } = await supabaseClient
+        .storage
+        .from('TermosAceite')
+        .list('', { search: nomeArquivo });
+
+    if (error || !data || data.length === 0) {
+        return false;
+    }
+
+    return data.some(f => f.name === nomeArquivo);
+}
+
+/**
+ * Abre o PDF do termo aceite no Storage do Supabase
+ */
+async function abrirTermoPDF(cpf) {
+    const cpfNumeros = cpf.replace(/\D/g, '');
+    const nomeArquivo = `TermosAceite_${cpfNumeros}.pdf`;
+
+    const { data, error } = await supabaseClient
+        .storage
+        .from('TermosAceite')
+        .createSignedUrl(nomeArquivo, 3600);
+
+    if (error || !data?.signedUrl) {
+        alert('Documento não encontrado ou erro ao gerar link.');
+        console.error('Erro ao gerar URL do PDF:', error?.message);
+        return;
+    }
+
+    window.open(data.signedUrl, '_blank');
+}
+
 // ===== Funções de Acesso ao Banco (Supabase) =====
 
 /**
@@ -44,24 +84,31 @@ async function carregarParceiros() {
     }
 
     tbody.innerHTML = '';
-    data.forEach(p => {
-        const tr = criarLinhaParceiro(p);
+    for (const p of data) {
+        const tr = await criarLinhaParceiro(p);
         tbody.appendChild(tr);
-    });
+    }
 }
 
 /**
  * Cria uma linha da tabela para um parceiro
  */
-function criarLinhaParceiro(p) {
+async function criarLinhaParceiro(p) {
     const tr = document.createElement('tr');
     tr.className = 'clickable-row';
     tr.onclick = function () { window.location = 'detalhe?id=' + p.id; };
 
-    // Termo Aceito
-    const termoBadge = p.termo_aceito
-        ? '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>'
-        : '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
+    // Termo Aceito - verifica se PDF existe
+    let termoBadge = '';
+    if (p.termo_aceito) {
+        const temPDF = await verificarTermoPDF(p.cpf);
+        termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+        if (temPDF) {
+            termoBadge += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="event.stopPropagation(); abrirTermoPDF(\'' + p.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
+        }
+    } else {
+        termoBadge = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
+    }
 
     // Assinatura Digital
     const assinaturaBadge = p.assinatura_digital
@@ -162,10 +209,10 @@ async function filtrarParceiros() {
         return;
     }
 
-    resultados.forEach(p => {
-        const tr = criarLinhaParceiro(p);
+    for (const p of resultados) {
+        const tr = await criarLinhaParceiro(p);
         tbody.appendChild(tr);
-    });
+    }
 }
 
 // ===== Funções da Página de Detalhe =====
@@ -340,7 +387,12 @@ async function carregarDetalhe() {
     const infoTermo = document.getElementById('info-termo');
     if (infoTermo) {
         if (parceiro.termo_aceito) {
-            infoTermo.innerHTML = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+            const temPDF = await verificarTermoPDF(parceiro.cpf);
+            let termoHTML = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+            if (temPDF) {
+                termoHTML += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="abrirTermoPDF(\'' + parceiro.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
+            }
+            infoTermo.innerHTML = termoHTML;
         } else {
             infoTermo.innerHTML = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
         }

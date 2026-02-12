@@ -901,6 +901,23 @@ body {
     background-color: #5a6268;
 }
 
+.btn-termo-pdf {
+    background: none;
+    border: none;
+    color: #0056a6;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: color 0.2s, background-color 0.2s;
+    vertical-align: middle;
+}
+
+.btn-termo-pdf:hover {
+    color: #003d75;
+    background-color: rgba(0, 86, 166, 0.1);
+}
+
 .btn-deletar {
     background-color: #dc3545;
     color: #fff;
