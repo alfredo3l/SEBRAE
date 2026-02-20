@@ -6,7 +6,7 @@
 // ===== Funções Utilitárias =====
 
 /**
- * Formata data para dd/mm/aaaa
+ * Formata data para dd/MM/aaaa
  */
 function formatarData(dataStr) {
     const d = new Date(dataStr);
@@ -14,6 +14,33 @@ function formatarData(dataStr) {
     const mes = String(d.getMonth() + 1).padStart(2, '0');
     const ano = d.getFullYear();
     return `${dia}/${mes}/${ano}`;
+}
+
+/**
+ * Formata data e hora para dd/MM/aaaa HH:mm
+ * Aceita ISO, texto no formato dd/MM/aaaa ou dd/MM/aaaa HH:mm
+ */
+function formatarDataHora(dataStr) {
+    if (!dataStr || dataStr === '-') return '-';
+
+    let d;
+    // Tenta interpretar formato brasileiro dd/MM/aaaa ou dd/MM/aaaa HH:mm
+    const matchBR = String(dataStr).match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+    if (matchBR) {
+        const [, dia, mes, ano, hora = '00', min = '00'] = matchBR;
+        d = new Date(`${ano}-${mes}-${dia}T${hora}:${min}:00`);
+    } else {
+        d = new Date(dataStr);
+    }
+
+    if (!d || isNaN(d.getTime())) return String(dataStr);
+
+    const dia = String(d.getDate()).padStart(2, '0');
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const ano = d.getFullYear();
+    const hora = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dia}/${mes}/${ano} ${hora}:${min}`;
 }
 
 /**
@@ -56,6 +83,12 @@ async function abrirTermoPDF(cpf) {
     window.open(data.signedUrl, '_blank');
 }
 
+// ===== Estado da paginação da tabela principal =====
+let dadosParceiros = [];
+let dadosFiltrados = [];
+let paginaParceiros = 1;
+let registrosPorPagina = 10;
+
 // ===== Funções de Acesso ao Banco (Supabase) =====
 
 /**
@@ -66,6 +99,8 @@ async function carregarParceiros() {
     if (!tbody) return;
 
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
+    document.getElementById('pagination-status')?.innerText && (document.getElementById('pagination-status').textContent = '');
+    document.getElementById('pagination-parceiros') && (document.getElementById('pagination-parceiros').innerHTML = '');
 
     const { data, error } = await supabaseClient
         .from('parceiros')
@@ -78,16 +113,93 @@ async function carregarParceiros() {
         return;
     }
 
-    if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Nenhum parceiro cadastrado.</td></tr>';
-        return;
-    }
+    dadosParceiros = data || [];
+    dadosFiltrados = dadosParceiros;
+    paginaParceiros = 1;
+    await renderizarTabelaParceiros();
+}
+
+/**
+ * Renderiza a página atual da tabela com paginação
+ */
+async function renderizarTabelaParceiros() {
+    const tbody = document.getElementById('tbody-parceiros');
+    if (!tbody) return;
+
+    const total = dadosFiltrados.length;
+    const inicio = (paginaParceiros - 1) * registrosPorPagina;
+    const fim = Math.min(inicio + registrosPorPagina, total);
+    const paginados = dadosFiltrados.slice(inicio, fim);
 
     tbody.innerHTML = '';
-    for (const p of data) {
-        const tr = await criarLinhaParceiro(p);
-        tbody.appendChild(tr);
+
+    if (paginados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
+    } else {
+        for (const p of paginados) {
+            const tr = await criarLinhaParceiro(p);
+            tbody.appendChild(tr);
+        }
     }
+
+    // Status de registros
+    const statusEl = document.getElementById('pagination-status');
+    if (statusEl) {
+        statusEl.textContent = total === 0
+            ? 'Nenhum registro encontrado'
+            : `Mostrando os registros ${inicio + 1} a ${fim} num total de ${total}`;
+    }
+
+    renderizarPaginacaoParceiros(total);
+}
+
+/**
+ * Renderiza os botões de navegação de página
+ */
+function renderizarPaginacaoParceiros(total) {
+    const container = document.getElementById('pagination-parceiros');
+    if (!container) return;
+
+    const totalPaginas = Math.ceil(total / registrosPorPagina);
+    container.innerHTML = '';
+
+    if (totalPaginas <= 1) return;
+
+    const btnPrev = document.createElement('button');
+    btnPrev.className = 'page-btn page-btn-label';
+    btnPrev.textContent = 'Anterior';
+    btnPrev.disabled = paginaParceiros === 1;
+    btnPrev.onclick = () => { paginaParceiros--; renderizarTabelaParceiros(); };
+    container.appendChild(btnPrev);
+
+    const maxBotoes = 7;
+    let ini = Math.max(1, paginaParceiros - Math.floor(maxBotoes / 2));
+    let fim = Math.min(totalPaginas, ini + maxBotoes - 1);
+    if (fim - ini < maxBotoes - 1) ini = Math.max(1, fim - maxBotoes + 1);
+
+    for (let i = ini; i <= fim; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'page-btn' + (i === paginaParceiros ? ' active' : '');
+        btn.textContent = i;
+        btn.onclick = ((pg) => () => { paginaParceiros = pg; renderizarTabelaParceiros(); })(i);
+        container.appendChild(btn);
+    }
+
+    const btnNext = document.createElement('button');
+    btnNext.className = 'page-btn page-btn-label';
+    btnNext.textContent = 'Seguinte';
+    btnNext.disabled = paginaParceiros === totalPaginas;
+    btnNext.onclick = () => { paginaParceiros++; renderizarTabelaParceiros(); };
+    container.appendChild(btnNext);
+}
+
+/**
+ * Altera a quantidade de registros por página
+ */
+function alterarRegistrosPorPagina(valor) {
+    registrosPorPagina = parseInt(valor);
+    paginaParceiros = 1;
+    renderizarTabelaParceiros();
 }
 
 /**
@@ -110,31 +222,20 @@ async function criarLinhaParceiro(p) {
         termoBadge = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
     }
 
-    // Assinatura Digital
-    const assinaturaBadge = p.assinatura_digital
-        ? '<span class="badge-assinado"><i class="fas fa-file-signature"></i> ' + p.assinatura_digital + '</span>'
-        : '<span class="badge-dash">-</span>';
-
-    // Enviado PIIq
-    const piiqBadge = p.enviado_piiq
-        ? '<span class="badge-sim-check"><i class="fas fa-check"></i> Sim</span>'
-        : '<span class="badge-nao-x"><i class="fas fa-times"></i> Não</span>';
-
     // Data Envio
-    const dataEnvio = p.data_envio || '-';
+    const dataEnvio = formatarDataHora(p.data_envio);
+
+    // Data Aceite
+    const dataAceite = formatarDataHora(p.data_aceite);
+
+    // Data Alteração (updated_at)
+    const dataAlteracao = formatarDataHora(p.updated_at);
 
     // Ações
-    let acoes = `
+    const acoes = `
         <button class="btn-action btn-action-view" title="Visualizar" onclick="event.stopPropagation(); window.location='detalhe?id=${p.id}'">
             <i class="fas fa-eye"></i>
         </button>`;
-
-    if (p.assinatura_digital) {
-        acoes += `
-        <button class="btn-action btn-action-doc" title="Documento" onclick="event.stopPropagation();">
-            <i class="fas fa-file-alt"></i>
-        </button>`;
-    }
 
     // Account ID do Salesforce
     const accountId = p.id_salesforce || '-';
@@ -145,9 +246,9 @@ async function criarLinhaParceiro(p) {
         <td>${p.telefone}</td>
         <td title="${p.id_salesforce || ''}">${accountId}</td>
         <td>${termoBadge}</td>
-        <td>${assinaturaBadge}</td>
-        <td>${piiqBadge}</td>
         <td>${dataEnvio}</td>
+        <td>${dataAceite}</td>
+        <td>${dataAlteracao}</td>
         <td>${acoes}</td>
     `;
 
@@ -188,31 +289,20 @@ async function filtrarParceiros() {
         return;
     }
 
-    const tbody = document.getElementById('tbody-parceiros');
-    if (!tbody) return;
-
     // Filtro de pesquisa textual (client-side para flexibilidade)
     let resultados = data || [];
     if (pesquisa) {
         resultados = resultados.filter(p =>
-            p.cpf.toLowerCase().includes(pesquisa) ||
-            p.nome_razao_social.toLowerCase().includes(pesquisa) ||
-            p.telefone.toLowerCase().includes(pesquisa) ||
-            p.id.toLowerCase().includes(pesquisa)
+            (p.cpf || '').toLowerCase().includes(pesquisa) ||
+            (p.nome_razao_social || '').toLowerCase().includes(pesquisa) ||
+            (p.telefone || '').toLowerCase().includes(pesquisa) ||
+            (p.id || '').toLowerCase().includes(pesquisa)
         );
     }
 
-    tbody.innerHTML = '';
-
-    if (resultados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
-        return;
-    }
-
-    for (const p of resultados) {
-        const tr = await criarLinhaParceiro(p);
-        tbody.appendChild(tr);
-    }
+    dadosFiltrados = resultados;
+    paginaParceiros = 1;
+    await renderizarTabelaParceiros();
 }
 
 // ===== Funções da Página de Detalhe =====
@@ -336,6 +426,19 @@ async function confirmarEnvioTermo() {
         });
 
         if (response.ok) {
+            // Grava a data/hora do envio no Supabase
+            const agora = new Date().toISOString();
+            const { error: erroUpdate } = await supabaseClient
+                .from('parceiros')
+                .update({ data_envio: agora })
+                .eq('id', parceiroAtual.id);
+
+            if (erroUpdate) {
+                console.error('Termo enviado, mas erro ao registrar data de envio:', erroUpdate.message);
+            } else {
+                parceiroAtual.data_envio = agora;
+            }
+
             document.getElementById('envio-sucesso-msg').textContent = 'Termo LGPD enviado com sucesso via WhatsApp!';
             sucessoDiv.style.display = 'flex';
 
@@ -1064,7 +1167,6 @@ async function visualizarParceiroBusca(cpf, btnEl) {
                 return;
             }
 
-            const termoAceito = lgpdParaBoolean(registro.lgpd);
             const telefone = formatarTelefoneParaCadastro(registro.telefone) || '';
 
             const { data, error } = await supabaseClient
@@ -1073,7 +1175,7 @@ async function visualizarParceiroBusca(cpf, btnEl) {
                     cpf: registro.cpf,
                     nome_razao_social: (registro.nome || '').toUpperCase(),
                     telefone: telefone,
-                    termo_aceito: termoAceito,
+                    termo_aceito: false,
                     enviado_piiq: false,
                     id_salesforce: registro.account_id || null
                 }])

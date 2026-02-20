@@ -99,9 +99,9 @@ body {
 
 /* === Container Principal === */
 .main-container {
-    max-width: 1200px;
+    max-width: 1600px;
     margin: 0 auto;
-    padding: 25px 20px;
+    padding: 25px 30px;
 }
 
 /* === Título da Página === */
@@ -252,8 +252,8 @@ body {
 /* === Tabela === */
 .table-container {
     background: #fff;
-    border-radius: 8px;
-    overflow: hidden;
+    border-radius: 0;
+    overflow-x: auto;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -288,6 +288,7 @@ body {
     vertical-align: middle;
     color: #444;
     font-size: 0.83rem;
+    white-space: nowrap;
 }
 
 /* === Badges de Status === */
@@ -685,6 +686,70 @@ body {
     }
 }
 
+/* === Controles superiores da tabela principal === */
+.table-top-controls {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    gap: 10px;
+}
+
+.table-top-controls + .table-container {
+    border-radius: 0;
+}
+
+.table-page-size {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: #555;
+}
+
+.table-page-size select {
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: #333;
+    background: #fff;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.table-page-size select:focus {
+    border-color: #0056a6;
+}
+
+/* === Rodapé de paginação da tabela principal === */
+.table-footer-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.table-page-status {
+    font-size: 0.875rem;
+    color: #666;
+}
+
+.table-footer-controls .pagination-container {
+    padding: 0;
+    justify-content: flex-end;
+}
+
 /* === Paginação === */
 .pagination-container {
     display: flex;
@@ -718,6 +783,18 @@ body {
     background-color: #0056a6;
     color: #fff;
     border-color: #0056a6;
+}
+
+.pagination-container .page-btn.page-btn-label {
+    width: auto;
+    padding: 0 12px;
+    font-size: 0.8rem;
+}
+
+.pagination-container .page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* === Tooltip e efeitos === */

@@ -46,10 +46,6 @@
                 Lista de Clientes
             </h2>
             <div class="page-actions">
-                <button class="btn-novo-parceiro" onclick="abrirModalCadastro()">
-                    <i class="fas fa-user-plus"></i>
-                    Novo Parceiro
-                </button>
                 <button class="btn-buscar" onclick="abrirModalBusca()">
                     <i class="fas fa-search"></i>
                     Buscar Cliente
@@ -91,6 +87,20 @@
             </div>
         </div>
 
+        <!-- Controles superiores da tabela -->
+        <div class="table-top-controls">
+            <div class="table-page-size">
+                <span>Mostrar</span>
+                <select id="registros-por-pagina" onchange="alterarRegistrosPorPagina(this.value)">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+                <span>registros por página</span>
+            </div>
+        </div>
+
         <!-- Tabela de Parceiros -->
         <div class="table-container">
             <table class="table-custom" id="tabela-parceiros">
@@ -101,9 +111,9 @@
                         <th>Telefone</th>
                         <th>Account ID</th>
                         <th>Termo Aceito</th>
-                        <th>Assinatura Digital</th>
-                        <th>Enviado PIIq</th>
                         <th>Data Envio</th>
+                        <th>Data Aceite</th>
+                        <th>Data Alteração</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -111,6 +121,12 @@
                     <!-- Dados carregados dinamicamente do Supabase -->
                 </tbody>
             </table>
+        </div>
+
+        <!-- Rodapé de paginação -->
+        <div class="table-footer-controls">
+            <div class="table-page-status" id="pagination-status"></div>
+            <div class="pagination-container" id="pagination-parceiros"></div>
         </div>
 
     </div>
