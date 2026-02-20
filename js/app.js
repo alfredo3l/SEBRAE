@@ -1245,15 +1245,32 @@ document.addEventListener('DOMContentLoaded', async function () {
             await carregarDetalhe();
         }
 
-        // Enter no campo de pesquisa
+        // Filtros automáticos da tabela principal
         const filtroPesquisa = document.getElementById('filtro-pesquisa');
+        const filtroStatus   = document.getElementById('filtro-status');
+        const filtroTelefone = document.getElementById('filtro-telefone');
+
         if (filtroPesquisa) {
-            filtroPesquisa.addEventListener('keypress', function (e) {
+            let _debounceFiltroPesquisa = null;
+
+            // Digitar: aguarda 350ms após parar de digitar
+            filtroPesquisa.addEventListener('input', () => {
+                clearTimeout(_debounceFiltroPesquisa);
+                _debounceFiltroPesquisa = setTimeout(() => filtrarParceiros(), 350);
+            });
+
+            // Enter: filtra imediatamente
+            filtroPesquisa.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
+                    clearTimeout(_debounceFiltroPesquisa);
                     filtrarParceiros();
                 }
             });
         }
+
+        // Selects: filtra ao mudar a opção
+        filtroStatus?.addEventListener('change', () => filtrarParceiros());
+        filtroTelefone?.addEventListener('change', () => filtrarParceiros());
     } catch (err) {
         console.error('Erro na inicialização:', err);
     }
