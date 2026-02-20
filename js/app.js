@@ -136,14 +136,14 @@ async function criarLinhaParceiro(p) {
         </button>`;
     }
 
-    // Account ID resumido
-    const accountId = p.id.substring(0, 8) + '...';
+    // Account ID do Salesforce
+    const accountId = p.id_salesforce || '-';
 
     tr.innerHTML = `
         <td>${p.cpf}</td>
         <td>${p.nome_razao_social}</td>
         <td>${p.telefone}</td>
-        <td title="${p.id}">${accountId}</td>
+        <td title="${p.id_salesforce || ''}">${accountId}</td>
         <td>${termoBadge}</td>
         <td>${assinaturaBadge}</td>
         <td>${piiqBadge}</td>
@@ -419,7 +419,7 @@ async function carregarDetalhe() {
     if (infoCpf) infoCpf.textContent = parceiro.cpf;
 
     const infoAccount = document.getElementById('info-account');
-    if (infoAccount) infoAccount.textContent = parceiro.id;
+    if (infoAccount) infoAccount.textContent = parceiro.id_salesforce || '-';
 
     const infoTelefone = document.getElementById('info-telefone');
     if (infoTelefone) infoTelefone.textContent = parceiro.telefone;
@@ -615,8 +615,6 @@ async function salvarEdicao(event) {
     event.preventDefault();
 
     const id = document.getElementById('edit-id').value;
-    const nome = document.getElementById('edit-nome').value.trim().toUpperCase();
-    const cpf = document.getElementById('edit-cpf').value.trim();
     const telefone = document.getElementById('edit-telefone').value.trim();
     const btnSalvar = document.getElementById('btn-salvar-edicao');
     const sucessoDiv = document.getElementById('edicao-sucesso');
@@ -626,13 +624,6 @@ async function salvarEdicao(event) {
     // Esconde mensagens anteriores
     sucessoDiv.style.display = 'none';
     erroDiv.style.display = 'none';
-
-    // Validação do CPF
-    if (cpf.length < 14) {
-        erroMsg.textContent = 'CPF inválido. Digite o CPF completo.';
-        erroDiv.style.display = 'flex';
-        return;
-    }
 
     // Validação do telefone
     if (telefone.length < 14) {
@@ -649,20 +640,12 @@ async function salvarEdicao(event) {
     try {
         const { data, error } = await supabaseClient
             .from('parceiros')
-            .update({
-                nome_razao_social: nome,
-                cpf: cpf,
-                telefone: telefone
-            })
+            .update({ telefone: telefone })
             .eq('id', id)
             .select();
 
         if (error) {
-            if (error.message.includes('duplicate') || error.message.includes('unique')) {
-                erroMsg.textContent = 'CPF já cadastrado para outro parceiro.';
-            } else {
-                erroMsg.textContent = 'Erro ao atualizar: ' + error.message;
-            }
+            erroMsg.textContent = 'Erro ao atualizar: ' + error.message;
             erroDiv.style.display = 'flex';
             return;
         }
@@ -713,6 +696,25 @@ function fecharModalCadastro() {
         modal.style.display = 'none';
         document.body.style.overflow = '';
     }
+}
+
+/**
+ * Converte o campo LGPD (Salesforce) para boolean
+ */
+function lgpdParaBoolean(val) {
+    if (val === true || val === 'true' || val === 'Sim' || val === 'S' || val === 1) return true;
+    return false;
+}
+
+/**
+ * Formata número de telefone para o padrão (XX)XXXXX-XXXX
+ */
+function formatarTelefoneParaCadastro(tel) {
+    if (!tel) return '';
+    const nums = tel.replace(/\D/g, '');
+    if (nums.length === 11) return `(${nums.substring(0, 2)})${nums.substring(2, 7)}-${nums.substring(7)}`;
+    if (nums.length === 10) return `(${nums.substring(0, 2)})${nums.substring(2, 6)}-${nums.substring(6)}`;
+    return tel;
 }
 
 /**
@@ -857,6 +859,7 @@ document.addEventListener('keydown', function (e) {
 
 let resultadosBusca = [];
 let paginaBusca = 1;
+let _buscaRegistrosPorCPF = {};
 
 let _buscaFiltroDebounce = null;
 
@@ -909,6 +912,12 @@ async function executarBuscaParceiro() {
         const registros = resultado.records || [];
 
         resultadosBusca = registros.map(mapearContatoParaTabela);
+        _buscaRegistrosPorCPF = {};
+        resultadosBusca.forEach(p => {
+            if (p.cpf && p.cpf !== '—') {
+                _buscaRegistrosPorCPF[p.cpf] = p;
+            }
+        });
         paginaBusca = 1;
 
         if (document.getElementById('busca-filtro-rapido')) {
@@ -984,12 +993,17 @@ function renderizarResultadosBusca() {
             <td>${telefone}</td>
             <td>${email}</td>
             <td>${lgpdBadge}</td>
-            <td>
-                <button class="btn-visualizar-busca" onclick="visualizarParceiroBusca('${p.cpf}')">
-                    <i class="fas fa-check"></i> Confirmar Parceiro
-                </button>
-            </td>
+            <td></td>
         `;
+
+        const btnConfirmar = document.createElement('button');
+        btnConfirmar.className = 'btn-visualizar-busca';
+        btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Cliente';
+        btnConfirmar.addEventListener('click', function () {
+            visualizarParceiroBusca(p.cpf, this);
+        });
+        tr.querySelector('td:last-child').appendChild(btnConfirmar);
+
         tbody.appendChild(tr);
     }
 
@@ -1028,18 +1042,67 @@ function renderizarResultadosBusca() {
 }
 
 /**
- * Ao clicar em "Visualizar", busca o parceiro no Supabase pelo CPF
- * e redireciona para a página de detalhe.
+ * Ao clicar em "Confirmar Parceiro", garante que o parceiro existe no Supabase
+ * (inserindo se necessário com os dados do Salesforce) e abre o detalhe.
  */
-async function visualizarParceiroBusca(cpf) {
+async function visualizarParceiroBusca(cpf, btnEl) {
     if (!cpf || cpf === '—') return;
 
-    const id = await buscarIdSupabasePorCPF(cpf);
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aguarde...';
+    }
 
-    if (id) {
-        window.location.href = `detalhe?id=${id}`;
-    } else {
-        alert(`Parceiro com CPF ${cpf} não está cadastrado no sistema local.\nCadastre-o primeiro clicando em "Novo Parceiro".`);
+    try {
+        let id = await buscarIdSupabasePorCPF(cpf);
+
+        if (!id) {
+            const registro = _buscaRegistrosPorCPF[cpf];
+
+            if (!registro) {
+                alert('Dados do parceiro não encontrados. Tente realizar a busca novamente.');
+                return;
+            }
+
+            const termoAceito = lgpdParaBoolean(registro.lgpd);
+            const telefone = formatarTelefoneParaCadastro(registro.telefone) || '';
+
+            const { data, error } = await supabaseClient
+                .from('parceiros')
+                .insert([{
+                    cpf: registro.cpf,
+                    nome_razao_social: (registro.nome || '').toUpperCase(),
+                    telefone: telefone,
+                    termo_aceito: termoAceito,
+                    enviado_piiq: false,
+                    id_salesforce: registro.account_id || null
+                }])
+                .select('id')
+                .single();
+
+            if (error) {
+                if (error.message.includes('duplicate') || error.message.includes('unique')) {
+                    id = await buscarIdSupabasePorCPF(cpf);
+                } else {
+                    alert('Erro ao cadastrar parceiro: ' + error.message);
+                    return;
+                }
+            } else {
+                id = data?.id;
+            }
+        }
+
+        if (id) {
+            window.location.href = `detalhe?id=${id}`;
+        }
+    } catch (err) {
+        console.error('Erro ao confirmar parceiro:', err);
+        alert('Erro inesperado. Tente novamente.');
+    } finally {
+        if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = '<i class="fas fa-check"></i> Confirmar Cliente';
+        }
     }
 }
 

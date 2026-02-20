@@ -89,7 +89,8 @@ function obterCampoLGPD(record) {
  */
 function mapearContatoParaTabela(record) {
     return {
-        id_salesforce: record.Id,
+        id_contato_salesforce: record.Id,
+        account_id: record.AccountId || null,
         nome: record.Name || '—',
         cpf: record.CPF__c || '—',
         telefone: record.Phone || record.MobilePhone || null,
