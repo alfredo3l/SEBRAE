@@ -836,6 +836,10 @@ document.addEventListener('click', function (e) {
     if (modalExcluir && e.target === modalExcluir) {
         fecharModalExcluir();
     }
+    const modalBusca = document.getElementById('modal-busca');
+    if (modalBusca && e.target === modalBusca) {
+        fecharModalBusca();
+    }
 });
 
 // Fechar modal com ESC
@@ -845,8 +849,199 @@ document.addEventListener('keydown', function (e) {
         fecharModalEdicao();
         fecharModalEnviarTermo();
         fecharModalExcluir();
+        fecharModalBusca();
     }
 });
+
+// ===== Modal Buscar Parceiro =====
+
+let resultadosBusca = [];
+let paginaBusca = 1;
+
+let _buscaFiltroDebounce = null;
+
+function abrirModalBusca() {
+    document.getElementById('modal-busca').style.display = 'flex';
+    document.getElementById('busca-termo').value = '';
+    document.getElementById('busca-resultados-container').style.display = 'none';
+    document.getElementById('busca-vazio').style.display = 'none';
+    document.getElementById('busca-loading').style.display = 'none';
+    resultadosBusca = [];
+    paginaBusca = 1;
+
+    // Filtro em tempo real com debounce de 200ms
+    const inputFiltro = document.getElementById('busca-filtro-rapido');
+    inputFiltro.value = '';
+
+    const novoInput = inputFiltro.cloneNode(true);
+    inputFiltro.parentNode.replaceChild(novoInput, inputFiltro);
+
+    novoInput.addEventListener('input', () => {
+        clearTimeout(_buscaFiltroDebounce);
+        _buscaFiltroDebounce = setTimeout(() => {
+            paginaBusca = 1;
+            renderizarResultadosBusca();
+        }, 200);
+    });
+
+    setTimeout(() => document.getElementById('busca-termo').focus(), 100);
+}
+
+function fecharModalBusca() {
+    const modal = document.getElementById('modal-busca');
+    if (modal) modal.style.display = 'none';
+}
+
+function buscarParceiroEnter(event) {
+    if (event.key === 'Enter') executarBuscaParceiro();
+}
+
+async function executarBuscaParceiro() {
+    const termo = document.getElementById('busca-termo').value.trim();
+    if (!termo) return;
+
+    document.getElementById('busca-loading').style.display = 'flex';
+    document.getElementById('busca-resultados-container').style.display = 'none';
+    document.getElementById('busca-vazio').style.display = 'none';
+
+    try {
+        const resultado = await buscarContatosSebrae(termo);
+        const registros = resultado.records || [];
+
+        resultadosBusca = registros.map(mapearContatoParaTabela);
+        paginaBusca = 1;
+
+        if (document.getElementById('busca-filtro-rapido')) {
+            document.getElementById('busca-filtro-rapido').value = '';
+        }
+
+        if (resultadosBusca.length === 0) {
+            document.getElementById('busca-vazio').style.display = 'flex';
+        } else {
+            document.getElementById('busca-resultados-container').style.display = 'block';
+            renderizarResultadosBusca();
+        }
+    } catch (err) {
+        console.error('Erro ao buscar na API SEBRAE:', err);
+        document.getElementById('busca-vazio').style.display = 'flex';
+        document.getElementById('busca-vazio').innerHTML =
+            `<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i>
+             <span style="color:#dc3545;">Erro ao conectar com a API SEBRAE. Verifique o console para detalhes.</span>`;
+    } finally {
+        document.getElementById('busca-loading').style.display = 'none';
+    }
+}
+
+function renderizarResultadosBusca() {
+    const filtroRapido = (document.getElementById('busca-filtro-rapido').value || '').toLowerCase();
+    const porPagina = parseInt(document.getElementById('busca-por-pagina').value) || 10;
+
+    let filtrados = resultadosBusca;
+    if (filtroRapido) {
+        filtrados = resultadosBusca.filter(p =>
+            (p.nome || '').toLowerCase().includes(filtroRapido) ||
+            (p.cpf || '').toLowerCase().includes(filtroRapido) ||
+            (p.telefone || '').toLowerCase().includes(filtroRapido) ||
+            (p.email || '').toLowerCase().includes(filtroRapido)
+        );
+    }
+
+    document.getElementById('busca-total').textContent = filtrados.length;
+
+    const inicio = (paginaBusca - 1) * porPagina;
+    const paginados = filtrados.slice(inicio, inicio + porPagina);
+
+    const tbody = document.getElementById('busca-tbody');
+    tbody.innerHTML = '';
+
+    if (paginados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
+        document.getElementById('busca-pagination').innerHTML = '';
+        return;
+    }
+
+    for (const p of paginados) {
+        const tr = document.createElement('tr');
+
+        const lgpdVal = p.lgpd;
+        let lgpdBadge;
+        if (lgpdVal === null || lgpdVal === undefined) {
+            lgpdBadge = '<span class="badge-dash">—</span>';
+        } else if (lgpdVal === true || lgpdVal === 'true' || lgpdVal === 'Sim' || lgpdVal === 'S') {
+            lgpdBadge = '<span class="badge-sim"><i class="fas fa-check"></i> Sim</span>';
+        } else if (lgpdVal === false || lgpdVal === 'false' || lgpdVal === 'Não' || lgpdVal === 'N') {
+            lgpdBadge = '<span class="badge-nao"><i class="fas fa-times"></i> Não</span>';
+        } else {
+            lgpdBadge = `<span>${lgpdVal}</span>`;
+        }
+
+        const telefone = p.telefone || '<span class="badge-dash">—</span>';
+        const email = p.email || '<span class="badge-dash">—</span>';
+
+        tr.innerHTML = `
+            <td>${p.nome}</td>
+            <td>${p.cpf}</td>
+            <td>${telefone}</td>
+            <td>${email}</td>
+            <td>${lgpdBadge}</td>
+            <td>
+                <button class="btn-visualizar-busca" onclick="visualizarParceiroBusca('${p.cpf}')">
+                    <i class="fas fa-check"></i> Confirmar Parceiro
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    const totalPaginas = Math.ceil(filtrados.length / porPagina);
+    const paginacaoEl = document.getElementById('busca-pagination');
+    paginacaoEl.innerHTML = '';
+
+    if (totalPaginas > 1) {
+        const btnPrev = document.createElement('button');
+        btnPrev.className = 'page-btn';
+        btnPrev.innerHTML = '&laquo;';
+        btnPrev.disabled = paginaBusca === 1;
+        btnPrev.onclick = () => { paginaBusca--; renderizarResultadosBusca(); };
+        paginacaoEl.appendChild(btnPrev);
+
+        const maxBotoes = 7;
+        let ini2 = Math.max(1, paginaBusca - Math.floor(maxBotoes / 2));
+        let fim = Math.min(totalPaginas, ini2 + maxBotoes - 1);
+        if (fim - ini2 < maxBotoes - 1) ini2 = Math.max(1, fim - maxBotoes + 1);
+
+        for (let i = ini2; i <= fim; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'page-btn' + (i === paginaBusca ? ' active' : '');
+            btn.textContent = i;
+            btn.onclick = ((pg) => () => { paginaBusca = pg; renderizarResultadosBusca(); })(i);
+            paginacaoEl.appendChild(btn);
+        }
+
+        const btnNext = document.createElement('button');
+        btnNext.className = 'page-btn';
+        btnNext.innerHTML = '&raquo;';
+        btnNext.disabled = paginaBusca === totalPaginas;
+        btnNext.onclick = () => { paginaBusca++; renderizarResultadosBusca(); };
+        paginacaoEl.appendChild(btnNext);
+    }
+}
+
+/**
+ * Ao clicar em "Visualizar", busca o parceiro no Supabase pelo CPF
+ * e redireciona para a página de detalhe.
+ */
+async function visualizarParceiroBusca(cpf) {
+    if (!cpf || cpf === '—') return;
+
+    const id = await buscarIdSupabasePorCPF(cpf);
+
+    if (id) {
+        window.location.href = `detalhe?id=${id}`;
+    } else {
+        alert(`Parceiro com CPF ${cpf} não está cadastrado no sistema local.\nCadastre-o primeiro clicando em "Novo Parceiro".`);
+    }
+}
 
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', async function () {

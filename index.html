@@ -50,10 +50,10 @@
                     <i class="fas fa-user-plus"></i>
                     Novo Parceiro
                 </button>
-                <a href="#" class="btn-buscar">
+                <button class="btn-buscar" onclick="abrirModalBusca()">
                     <i class="fas fa-search"></i>
                     Buscar Parceiro
-                </a>
+                </button>
                 <a href="/" class="btn-inicio">
                     <i class="fas fa-home"></i>
                     Início
@@ -192,6 +192,100 @@
         </div>
     </div>
 
+    <!-- ========== MODAL BUSCAR PARCEIRO ========== -->
+    <div class="modal-overlay" id="modal-busca" style="display: none;">
+        <div class="modal-busca-card">
+            <div class="modal-cadastro-header">
+                <h3>
+                    <i class="fas fa-search"></i>
+                    Buscar Parceiro
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalBusca()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-busca-body">
+
+                <!-- Painel de Filtro -->
+                <div class="busca-filtro-painel">
+                    <div class="busca-filtro-titulo">
+                        <i class="fas fa-filter"></i>
+                        Nome, CPF ou Telefone
+                    </div>
+                    <div class="busca-filtro-conteudo">
+                        <label class="busca-label">Nome, CPF ou Telefone</label>
+                        <div class="busca-input-row">
+                            <input
+                                type="text"
+                                id="busca-termo"
+                                class="busca-input"
+                                placeholder="Digite parte do nome, CPF ou telefone"
+                                onkeypress="buscarParceiroEnter(event)"
+                            >
+                            <button class="btn-buscar-modal" onclick="executarBuscaParceiro()">
+                                <i class="fas fa-search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div class="busca-loading" id="busca-loading" style="display: none;">
+                    <div class="busca-spinner"></div>
+                    <span>Buscando...</span>
+                </div>
+
+                <!-- Vazio -->
+                <div class="busca-vazio" id="busca-vazio" style="display: none;">
+                    <i class="fas fa-search-minus"></i>
+                    <span>Nenhum parceiro encontrado com os termos informados.</span>
+                </div>
+
+                <!-- Resultados -->
+                <div class="busca-resultados-painel" id="busca-resultados-container" style="display: none;">
+                    <div class="busca-resultados-titulo">
+                        <i class="fas fa-table"></i>
+                        Resultados (<span id="busca-total">0</span>)
+                    </div>
+                    <div class="busca-resultados-conteudo">
+                        <div class="busca-table-controls">
+                            <div class="busca-mostrar">
+                                Mostrar
+                                <select id="busca-por-pagina" onchange="paginaBusca=1; renderizarResultadosBusca()">
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                registros
+                            </div>
+                            <div class="busca-procurar">
+                                Procurar:
+                                <input type="text" id="busca-filtro-rapido" placeholder="Filtrar...">
+                            </div>
+                        </div>
+                        <div class="busca-table-wrapper">
+                            <table class="busca-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>CPF</th>
+                                        <th>Telefone</th>
+                                        <th>E-mail</th>
+                                        <th>Termo LGPD</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="busca-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-container" id="busca-pagination"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Supabase JS (CDN) -->
@@ -200,6 +294,8 @@
     <script src="js/supabase-config.js"></script>
     <!-- Autenticação -->
     <script src="js/auth.js"></script>
+    <!-- API SEBRAE / Salesforce -->
+    <script src="js/sebrae-api.js"></script>
     <!-- JS Customizado -->
     <script src="js/app.js"></script>
 </body>
