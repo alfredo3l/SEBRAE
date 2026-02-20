@@ -43,23 +43,25 @@ function formatarDataHora(dataStr) {
     return `${dia}/${mes}/${ano} ${hora}:${min}`;
 }
 
+// Cache de verificação de PDF para evitar chamadas repetidas ao Storage
+const _cachePDF = {};
+
 /**
- * Verifica se o PDF do termo existe no bucket do Supabase
+ * Verifica se o PDF do termo existe no bucket do Supabase (com cache)
  */
 async function verificarTermoPDF(cpf) {
     const cpfNumeros = cpf.replace(/\D/g, '');
-    const nomeArquivo = `TermosAceite_${cpfNumeros}.pdf`;
+    if (cpfNumeros in _cachePDF) return _cachePDF[cpfNumeros];
 
+    const nomeArquivo = `TermosAceite_${cpfNumeros}.pdf`;
     const { data, error } = await supabaseClient
         .storage
         .from('TermosAceite')
         .list('', { search: nomeArquivo });
 
-    if (error || !data || data.length === 0) {
-        return false;
-    }
-
-    return data.some(f => f.name === nomeArquivo);
+    const resultado = !error && data && data.some(f => f.name === nomeArquivo);
+    _cachePDF[cpfNumeros] = resultado;
+    return resultado;
 }
 
 /**
@@ -116,13 +118,15 @@ async function carregarParceiros() {
     dadosParceiros = data || [];
     dadosFiltrados = dadosParceiros;
     paginaParceiros = 1;
-    await renderizarTabelaParceiros();
+    renderizarTabelaParceiros();
 }
 
 /**
- * Renderiza a página atual da tabela com paginação
+ * Renderiza a página atual da tabela com paginação.
+ * Linhas são inseridas imediatamente (síncronas); botões de PDF
+ * são adicionados em paralelo após a renderização inicial.
  */
-async function renderizarTabelaParceiros() {
+function renderizarTabelaParceiros() {
     const tbody = document.getElementById('tbody-parceiros');
     if (!tbody) return;
 
@@ -136,10 +140,28 @@ async function renderizarTabelaParceiros() {
     if (paginados.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
     } else {
-        for (const p of paginados) {
-            const tr = await criarLinhaParceiro(p);
-            tbody.appendChild(tr);
-        }
+        // Renderiza todas as linhas de forma síncrona de uma só vez
+        paginados.forEach(p => tbody.appendChild(criarLinhaParceiro(p)));
+
+        // Verifica PDFs em paralelo e injeta botão nas linhas correspondentes
+        paginados
+            .filter(p => p.termo_aceito)
+            .forEach(p => {
+                verificarTermoPDF(p.cpf).then(temPDF => {
+                    if (!temPDF) return;
+                    const tr = tbody.querySelector(`tr[data-id="${p.id}"]`);
+                    if (!tr) return;
+                    const termoCell = tr.cells[4];
+                    if (termoCell) {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-termo-pdf';
+                        btn.title = 'Ver Termo PDF';
+                        btn.innerHTML = '<i class="fas fa-file-pdf"></i>';
+                        btn.onclick = (e) => { e.stopPropagation(); abrirTermoPDF(p.cpf); };
+                        termoCell.appendChild(btn);
+                    }
+                });
+            });
     }
 
     // Status de registros
@@ -203,21 +225,18 @@ function alterarRegistrosPorPagina(valor) {
 }
 
 /**
- * Cria uma linha da tabela para um parceiro
+ * Cria uma linha da tabela para um parceiro (síncrono — sem aguardar PDF)
  */
-async function criarLinhaParceiro(p) {
+function criarLinhaParceiro(p) {
     const tr = document.createElement('tr');
     tr.className = 'clickable-row';
+    tr.dataset.id = p.id;
     tr.onclick = function () { window.location = 'detalhe?id=' + p.id; };
 
-    // Termo Aceito - verifica se PDF existe
+    // Termo Aceito — renderiza badge imediatamente; botão PDF é adicionado depois em paralelo
     let termoBadge = '';
     if (p.termo_aceito) {
-        const temPDF = await verificarTermoPDF(p.cpf);
         termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
-        if (temPDF) {
-            termoBadge += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="event.stopPropagation(); abrirTermoPDF(\'' + p.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
-        }
     } else {
         termoBadge = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
     }
@@ -302,7 +321,7 @@ async function filtrarParceiros() {
 
     dadosFiltrados = resultados;
     paginaParceiros = 1;
-    await renderizarTabelaParceiros();
+    renderizarTabelaParceiros();
 }
 
 // ===== Funções da Página de Detalhe =====
