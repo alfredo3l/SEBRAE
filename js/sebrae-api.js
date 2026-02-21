@@ -1,9 +1,11 @@
 /* ============================================
-   SEBRAE - Integração via Proxy Local (porta 3001)
-   O proxy evita bloqueio de CORS ao chamar a API Salesforce.
+   SEBRAE - Integração via Serverless Function (Vercel)
+   Rota: /api/sebrae/query
+   URL relativa funciona em qualquer ambiente:
+   local (dev.js), Vercel, celular, etc.
    ============================================ */
 
-const SEBRAE_PROXY = 'http://localhost:3001';
+const SEBRAE_PROXY = '';
 
 /**
  * Formata CPF para o padrão 000.000.000-00
