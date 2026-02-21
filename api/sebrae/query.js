@@ -49,30 +49,60 @@ module.exports = async function handler(req, res) {
         return res.status(204).end();
     }
 
+    // Diagnóstico: verifica variáveis de ambiente
     if (!SEBRAE_CLIENT_ID || !SEBRAE_CLIENT_SECRET) {
         return res.status(500).json({
-            error: 'Variáveis de ambiente SEBRAE_CLIENT_ID e SEBRAE_CLIENT_SECRET não configuradas no Vercel.'
+            etapa: 'config',
+            error: 'Variaveis SEBRAE_CLIENT_ID ou SEBRAE_CLIENT_SECRET nao configuradas.',
+            client_id_ok: !!SEBRAE_CLIENT_ID,
+            client_secret_ok: !!SEBRAE_CLIENT_SECRET,
+            api_base: SEBRAE_API_BASE
         });
     }
 
     const q = req.query.q;
     if (!q) {
-        return res.status(400).json({ error: 'Parâmetro "q" é obrigatório.' });
+        return res.status(400).json({ error: 'Parametro "q" e obrigatorio.' });
     }
 
+    // Obtém token
+    let token;
     try {
-        const token = await obterToken();
-        const queryUrl = `${SEBRAE_API_BASE}/services/data/v64.0/query?q=${encodeURIComponent(q)}`;
+        token = await obterToken();
+    } catch (err) {
+        console.error('[SEBRAE] Falha ao obter token:', err.message);
+        return res.status(500).json({
+            etapa: 'token',
+            error: err.message,
+            api_base: SEBRAE_API_BASE
+        });
+    }
 
+    // Executa query
+    try {
+        const queryUrl = `${SEBRAE_API_BASE}/services/data/v64.0/query?q=${encodeURIComponent(q)}`;
         const sfResp = await fetch(queryUrl, {
             headers: { Authorization: `Bearer ${token}` },
         });
 
         const body = await sfResp.json();
-        return res.status(sfResp.status).json(body);
+
+        if (!sfResp.ok) {
+            console.error('[SEBRAE] Erro na query:', sfResp.status, JSON.stringify(body));
+            return res.status(sfResp.status).json({
+                etapa: 'query',
+                status: sfResp.status,
+                body
+            });
+        }
+
+        return res.status(200).json(body);
 
     } catch (err) {
-        console.error('[Vercel/SEBRAE] Erro:', err.message);
-        return res.status(500).json({ error: err.message });
+        console.error('[SEBRAE] Falha na query:', err.message);
+        return res.status(500).json({
+            etapa: 'query',
+            error: err.message
+        });
     }
 };
