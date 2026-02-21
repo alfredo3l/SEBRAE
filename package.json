@@ -2,6 +2,9 @@
   "name": "sebrae-aceite-lgpd",
   "version": "1.0.0",
   "description": "SEBRAE - Sistema de Aceite LGPD",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "node dev.js",
     "start": "serve -l 3000"
