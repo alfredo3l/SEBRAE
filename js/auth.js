@@ -29,10 +29,10 @@ function preencherNavbarComCache() {
         atualizarNavbarAvatar(foto);
     }
 
-    // Mostra/oculta o link de Gestão de Usuários com base no role em cache
-    const linkUsuarios = document.querySelector('.link-usuarios');
-    if (linkUsuarios && role) {
-        linkUsuarios.style.display = (role === 'admin') ? '' : 'none';
+    // Mostra/oculta o botão de menu (3 pontinhos) com base no role em cache
+    const menuWrapper = document.querySelector('.navbar-dropdown-wrapper');
+    if (menuWrapper && role) {
+        menuWrapper.style.display = (role === 'admin') ? '' : 'none';
     }
 }
 
@@ -114,9 +114,9 @@ async function verificarAutenticacao() {
     const userInfoSpan = document.querySelector('.user-info span');
     if (userInfoSpan) userInfoSpan.textContent = nome;
 
-    const linkUsuarios = document.querySelector('.link-usuarios');
-    if (linkUsuarios) {
-        linkUsuarios.style.display = (perfil?.role === 'admin') ? '' : 'none';
+    const menuWrapper = document.querySelector('.navbar-dropdown-wrapper');
+    if (menuWrapper) {
+        menuWrapper.style.display = (perfil?.role === 'admin') ? '' : 'none';
     }
 
     if (perfil?.foto_url && typeof atualizarNavbarAvatar === 'function') {
