@@ -324,6 +324,23 @@ async function filtrarParceiros() {
     renderizarTabelaParceiros();
 }
 
+// ===== Controle de Permissões por Role =====
+
+/**
+ * Aplica as permissões visuais na página de detalhe de acordo com o role do usuário.
+ * Os botões nascem ocultos no HTML e são exibidos aqui apenas para admin e operador,
+ * evitando qualquer flash visual para o visualizador.
+ */
+function aplicarPermissoesDetalhe() {
+    if (!usuarioPodeEditar()) return; // visualizador: botões permanecem ocultos
+
+    const btnEditar = document.querySelector('.btn-editar-parceiro');
+    const btnEnviar = document.querySelector('.btn-enviar-termo');
+
+    if (btnEditar) btnEditar.style.display = '';
+    if (btnEnviar) btnEnviar.style.display = '';
+}
+
 // ===== Funções da Página de Detalhe =====
 
 /**
@@ -359,6 +376,10 @@ async function navegarParceiro(direcao) {
  * Abre o modal de confirmação para enviar o termo LGPD
  */
 function enviarTermo() {
+    if (!usuarioPodeEditar()) {
+        alert('Você não tem permissão para enviar o termo LGPD.');
+        return;
+    }
     if (!parceiroAtual) {
         alert('Erro: dados do parceiro não carregados.');
         return;
@@ -601,6 +622,9 @@ async function carregarDetalhe() {
             document.querySelector('.info-message').style.display = 'none';
         }
     }
+
+    // Aplica restrições visuais baseadas no role do usuário
+    aplicarPermissoesDetalhe();
 }
 
 // ===== Funções do Modal de Edição =====
@@ -612,6 +636,10 @@ let parceiroAtual = null;
  * Abre o modal de edição preenchido com os dados do parceiro atual
  */
 function abrirModalEdicao() {
+    if (!usuarioPodeEditar()) {
+        alert('Você não tem permissão para editar parceiros.');
+        return;
+    }
     const modal = document.getElementById('modal-edicao');
     if (!modal || !parceiroAtual) return;
 
@@ -635,6 +663,10 @@ function abrirModalEdicao() {
  * Abre o modal de confirmação para excluir o parceiro
  */
 function deletarParceiro() {
+    if (!usuarioPodeEditar()) {
+        alert('Você não tem permissão para excluir parceiros.');
+        return;
+    }
     if (!parceiroAtual) return;
 
     const modal = document.getElementById('modal-excluir');
@@ -1121,9 +1153,18 @@ function renderizarResultadosBusca() {
         const btnConfirmar = document.createElement('button');
         btnConfirmar.className = 'btn-visualizar-busca';
         btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Cliente';
-        btnConfirmar.addEventListener('click', function () {
-            visualizarParceiroBusca(p.cpf, this);
-        });
+
+        if (!usuarioPodeEditar()) {
+            btnConfirmar.disabled = true;
+            btnConfirmar.title = 'Você não tem permissão para confirmar clientes';
+            btnConfirmar.style.opacity = '0.4';
+            btnConfirmar.style.cursor = 'not-allowed';
+        } else {
+            btnConfirmar.addEventListener('click', function () {
+                visualizarParceiroBusca(p.cpf, this);
+            });
+        }
+
         tr.querySelector('td:last-child').appendChild(btnConfirmar);
 
         tbody.appendChild(tr);
@@ -1168,6 +1209,10 @@ function renderizarResultadosBusca() {
  * (inserindo se necessário com os dados do Salesforce) e abre o detalhe.
  */
 async function visualizarParceiroBusca(cpf, btnEl) {
+    if (!usuarioPodeEditar()) {
+        alert('Você não tem permissão para confirmar clientes.');
+        return;
+    }
     if (!cpf || cpf === '—') return;
 
     if (btnEl) {
@@ -1229,11 +1274,11 @@ async function visualizarParceiroBusca(cpf, btnEl) {
 
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', async function () {
-    // Aguarda a verificação de autenticação antes de carregar dados
-    // (auth.js redireciona se não autenticado)
     try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (!session) return; // auth.js vai redirecionar
+        // Garante que _perfilAtual está carregado antes de renderizar qualquer página.
+        // verificarAutenticacao() busca o perfil do banco e redireciona se não autenticado.
+        const session = await verificarAutenticacao();
+        if (!session) return;
 
         // Página de lista: carregar parceiros do banco
         if (document.getElementById('tbody-parceiros')) {

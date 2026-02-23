@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEBRAE - Gestão de Usuários</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- CSS Customizado -->
+    <link href="css/style.css" rel="stylesheet">
+    <style>
+        /* ---- Badges de role ---- */
+        .badge-role {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+        }
+        .badge-role.admin        { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .badge-role.operador     { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .badge-role.visualizador { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+
+        /* ---- Badges de status ---- */
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-status.ativo   { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .badge-status.inativo { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        /* ---- Botão editar ---- */
+        .btn-acao {
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            transition: background 0.15s;
+        }
+        .btn-acao:hover { background: #f3f4f6; }
+        .btn-acao.editar { color: #2563eb; }
+
+        /* ---- Toggle switch ---- */
+        .toggle-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .toggle-wrap.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .toggle-track {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            border-radius: 11px;
+            transition: background 0.25s;
+            flex-shrink: 0;
+        }
+        .toggle-track.on  { background: #16a34a; }
+        .toggle-track.off { background: #d1d5db; }
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+            transition: left 0.25s;
+        }
+        .toggle-track.on  .toggle-thumb { left: 21px; }
+        .toggle-track.off .toggle-thumb { left: 3px;  }
+        .toggle-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            min-width: 44px;
+        }
+        .toggle-wrap.on  .toggle-label { color: #16a34a; }
+        .toggle-wrap.off .toggle-label { color: #9ca3af; }
+
+        /* ---- Modal de usuário ---- */
+        .modal-usuario-card {
+            background: #fff;
+            border-radius: 14px;
+            width: 100%;
+            max-width: 520px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+            animation: slideIn 0.25s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to   { transform: translateY(0);     opacity: 1; }
+        }
+        .modal-usuario-header {
+            background: linear-gradient(135deg, #003087 0%, #0050d0 100%);
+            color: #fff;
+            padding: 18px 22px;
+            border-radius: 14px 14px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-usuario-header h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-usuario-body {
+            padding: 26px 28px;
+        }
+        .campo-form {
+            margin-bottom: 18px;
+        }
+        .campo-form label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        .campo-form input,
+        .campo-form select {
+            width: 100%;
+            padding: 9px 13px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #111827;
+            background: #f9fafb;
+            transition: border 0.15s;
+        }
+        .campo-form input:focus,
+        .campo-form select:focus {
+            outline: none;
+            border-color: #2563eb;
+            background: #fff;
+        }
+        .campo-form input[readonly] {
+            background: #f3f4f6;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+        .modal-acoes {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 8px;
+        }
+        .btn-cancelar-modal {
+            padding: 9px 20px;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-cancelar-modal:hover { background: #f9fafb; }
+        .btn-salvar-modal {
+            padding: 9px 22px;
+            border: none;
+            background: linear-gradient(135deg, #003087, #0050d0);
+            color: #fff;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            transition: opacity 0.15s;
+        }
+        .btn-salvar-modal:hover   { opacity: 0.9; }
+        .btn-salvar-modal:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ---- Linha de resumo ---- */
+        .resumo-bar {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .resumo-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            color: #374151;
+            font-weight: 500;
+        }
+        .resumo-item .numero {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #003087;
+        }
+
+        /* ---- Alert inline ---- */
+        .alert-inline {
+            display: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+            align-items: center;
+            gap: 8px;
+        }
+        .alert-inline.sucesso { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .alert-inline.erro    { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+        /* ---- Spinner ---- */
+        .btn-spinner {
+            width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ---- Modal de Confirmação ---- */
+        .modal-confirm-card {
+            background: #fff;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            animation: slideIn 0.22s ease;
+            text-align: center;
+            padding: 36px 32px 28px;
+        }
+        .modal-confirm-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 18px;
+            font-size: 1.6rem;
+        }
+        .modal-confirm-icon.desativar { background: #fee2e2; color: #dc2626; }
+        .modal-confirm-icon.ativar    { background: #d1fae5; color: #059669; }
+        .modal-confirm-titulo {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 10px;
+        }
+        .modal-confirm-texto {
+            font-size: 0.9rem;
+            color: #6b7280;
+            line-height: 1.55;
+            margin: 0 0 26px;
+        }
+        .modal-confirm-texto strong {
+            color: #374151;
+        }
+        .modal-confirm-acoes {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .btn-confirm-cancelar {
+            flex: 1;
+            padding: 10px 0;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-confirm-cancelar:hover { background: #f9fafb; }
+        .btn-confirm-ok {
+            flex: 1;
+            padding: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #fff;
+        }
+        .btn-confirm-ok.desativar { background: #dc2626; }
+        .btn-confirm-ok.desativar:hover { background: #b91c1c; }
+        .btn-confirm-ok.ativar    { background: #059669; }
+        .btn-confirm-ok.ativar:hover    { background: #047857; }
+    </style>
+</head>
+<body>
+
+    <!-- ========== HEADER / NAVBAR ========== -->
+    <nav class="navbar-custom">
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <a class="navbar-brand" href="index">
+                <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
+                <span>Aceite LGPD</span>
+            </a>
+            <div class="navbar-right">
+                <div class="user-info" onclick="abrirModalPerfil()" title="Meu perfil">
+                    <div class="navbar-avatar-placeholder" id="navbar-avatar-wrap">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <span>Carregando...</span>
+                </div>
+                <div class="navbar-dropdown-wrapper">
+                    <button class="btn-menu" title="Menu" onclick="toggleMenuDropdown()">
+                        <i class="fas fa-ellipsis-vertical"></i>
+                    </button>
+                    <div class="navbar-dropdown" id="navbar-dropdown" style="display:none;">
+                        <div class="navbar-dropdown-section link-usuarios">
+                            <div class="navbar-dropdown-label">Administração</div>
+                            <a href="usuarios" class="navbar-dropdown-item item-admin" style="background:#fffbeb;">
+                                <i class="fas fa-users-cog"></i>
+                                Gestão de Usuários
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <a href="#" class="btn-sair">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sair
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========== CONTEÚDO PRINCIPAL ========== -->
+    <div class="main-container">
+
+        <!-- Cabeçalho da Página -->
+        <div class="page-header">
+            <h2 class="page-title">
+                <i class="fas fa-users-cog"></i>
+                Gestão de Usuários
+            </h2>
+            <div class="page-actions">
+                <button class="btn-buscar" onclick="abrirModalNovoUsuario()">
+                    <i class="fas fa-user-plus"></i>
+                    Novo Usuário
+                </button>
+                <a href="index" class="btn-inicio">
+                    <i class="fas fa-arrow-left"></i>
+                    Voltar
+                </a>
+            </div>
+        </div>
+
+        <!-- Resumo de contadores -->
+        <div class="resumo-bar" id="resumo-bar">
+            <div class="resumo-item">
+                <i class="fas fa-users" style="color:#2563eb;"></i>
+                Total: <span class="numero" id="cnt-total">-</span>
+            </div>
+            <div class="resumo-item">
+                <i class="fas fa-check-circle" style="color:#059669;"></i>
+                Ativos: <span class="numero" id="cnt-ativos">-</span>
+            </div>
+            <div class="resumo-item">
+                <i class="fas fa-ban" style="color:#dc2626;"></i>
+                Inativos: <span class="numero" id="cnt-inativos">-</span>
+            </div>
+            <div class="resumo-item">
+                <i class="fas fa-crown" style="color:#d97706;"></i>
+                Admins: <span class="numero" id="cnt-admins">-</span>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="filter-card">
+            <div class="filter-row">
+                <div class="filter-group" style="flex: 2;">
+                    <label><i class="fas fa-search"></i> Pesquisar</label>
+                    <input type="text" id="filtro-pesquisa" placeholder="Nome ou e-mail..." oninput="filtrarUsuarios()">
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-shield-alt"></i> Perfil</label>
+                    <select id="filtro-role" onchange="filtrarUsuarios()">
+                        <option value="">Todos</option>
+                        <option value="admin">Administrador</option>
+                        <option value="operador">Operador</option>
+                        <option value="visualizador">Visualizador</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-toggle-on"></i> Status</label>
+                    <select id="filtro-status" onchange="filtrarUsuarios()">
+                        <option value="">Todos</option>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de Usuários -->
+        <div class="table-container">
+            <table class="table-custom" id="tabela-usuarios">
+                <thead>
+                    <tr>
+                        <th>Nome Completo</th>
+                        <th>E-mail</th>
+                        <th>Perfil</th>
+                        <th>Último Acesso</th>
+                        <th>Criado em</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-usuarios">
+                    <tr>
+                        <td colspan="7" style="text-align:center; padding: 40px; color: #9ca3af;">
+                            <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;"></i>
+                            <p style="margin-top:10px;">Carregando usuários...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- ========== MODAL NOVO / EDITAR USUÁRIO ========== -->
+    <div class="modal-overlay" id="modal-usuario" style="display: none;">
+        <div class="modal-usuario-card">
+            <div class="modal-usuario-header">
+                <h3 id="modal-titulo">
+                    <i class="fas fa-user-plus"></i>
+                    Novo Usuário
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalUsuario()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-usuario-body">
+
+                <div class="alert-inline" id="alerta-modal">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="alerta-modal-msg"></span>
+                </div>
+
+                <form id="form-usuario" onsubmit="salvarUsuario(event)">
+                    <input type="hidden" id="usr-id">
+
+                    <div class="campo-form">
+                        <label><i class="fas fa-user"></i> Nome Completo <span style="color:#dc2626">*</span></label>
+                        <input type="text" id="usr-nome" placeholder="Nome completo do usuário" required maxlength="120">
+                    </div>
+
+                    <div class="campo-form">
+                        <label><i class="fas fa-envelope"></i> E-mail <span style="color:#dc2626">*</span></label>
+                        <input type="email" id="usr-email" placeholder="email@sebrae.com.br" required maxlength="120">
+                    </div>
+
+                    <div class="campo-form">
+                        <label><i class="fas fa-lock"></i> Senha <span style="color:#dc2626" id="senha-obrigatorio">*</span>
+                            <small style="color:#6b7280; font-weight:400;" id="senha-hint">(mínimo 8 caracteres)</small>
+                        </label>
+                        <input type="password" id="usr-senha" placeholder="Digite a senha" minlength="8">
+                    </div>
+
+                    <div class="campo-form">
+                        <label><i class="fas fa-shield-alt"></i> Perfil de Acesso <span style="color:#dc2626">*</span></label>
+                        <select id="usr-role" required>
+                            <option value="visualizador">Visualizador — somente leitura</option>
+                            <option value="operador">Operador — pode cadastrar e editar parceiros</option>
+                            <option value="admin">Administrador — acesso total</option>
+                        </select>
+                    </div>
+
+                    <div class="campo-form" id="campo-ativo" style="display:none;">
+                        <label><i class="fas fa-toggle-on"></i> Status</label>
+                        <select id="usr-ativo">
+                            <option value="true">Ativo</option>
+                            <option value="false">Inativo</option>
+                        </select>
+                    </div>
+
+                    <div class="campo-form" id="campo-motivo" style="display:none;">
+                        <label><i class="fas fa-comment-alt"></i> Motivo de desativação</label>
+                        <input type="text" id="usr-motivo" placeholder="Informe o motivo..." maxlength="200">
+                    </div>
+
+                    <div class="modal-acoes">
+                        <button type="button" class="btn-cancelar-modal" onclick="fecharModalUsuario()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn-salvar-modal" id="btn-salvar-usuario">
+                            <div class="btn-spinner" id="spinner-salvar"></div>
+                            <i class="fas fa-save" id="icon-salvar"></i>
+                            <span id="txt-salvar">Salvar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL MEU PERFIL ========== -->
+    <div class="modal-overlay" id="modal-perfil" style="display:none;">
+        <div class="modal-perfil-card">
+            <div class="modal-perfil-header">
+                <h3><i class="fas fa-user-circle"></i> <span id="perfil-modal-titulo">Meu Perfil</span></h3>
+                <button class="modal-close-btn" onclick="fecharModalPerfil()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-perfil-body">
+                <div class="perfil-alert" id="perfil-alert">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="perfil-alert-msg"></span>
+                </div>
+                <div class="perfil-foto-area">
+                    <div class="perfil-foto-wrap" onclick="document.getElementById('input-foto-perfil').click()" title="Clique para alterar a foto">
+                        <div class="perfil-foto-placeholder" id="perfil-foto-placeholder">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <img id="perfil-foto-img" class="perfil-foto-img" src="" alt="Foto de perfil" style="display:none;">
+                        <div class="perfil-foto-overlay">
+                            <i class="fas fa-camera"></i>
+                            Alterar foto
+                        </div>
+                    </div>
+                    <input type="file" id="input-foto-perfil" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadFotoPerfil(this)">
+                    <div class="upload-progress-bar" id="perfil-progress-bar">
+                        <div class="upload-progress-fill" id="perfil-progress-fill"></div>
+                    </div>
+                    <div class="perfil-foto-nome" id="perfil-nome-display">—</div>
+                    <div class="perfil-foto-email" id="perfil-email-display">—</div>
+                </div>
+                <div class="perfil-info-row">
+                    <div class="perfil-info-item">
+                        <label><i class="fas fa-shield-alt"></i> Perfil de acesso</label>
+                        <span id="perfil-role-display">—</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL DE CONFIRMAÇÃO ========== -->
+    <div class="modal-overlay" id="modal-confirmacao" style="display:none;">
+        <div class="modal-confirm-card">
+            <div class="modal-confirm-icon" id="confirm-icon-wrap">
+                <i id="confirm-icon" class="fas fa-ban"></i>
+            </div>
+            <h3 class="modal-confirm-titulo" id="confirm-titulo">Desativar usuário</h3>
+            <p class="modal-confirm-texto" id="confirm-texto"></p>
+            <div class="modal-confirm-acoes">
+                <button class="btn-confirm-cancelar" id="btn-confirm-cancelar">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="btn-confirm-ok" id="btn-confirm-ok">
+                    <i class="fas fa-ban" id="btn-confirm-icon"></i>
+                    <span id="btn-confirm-label">Desativar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Supabase JS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase Config -->
+    <script src="js/supabase-config.js"></script>
+    <!-- Autenticação -->
+    <script src="js/auth.js"></script>
+    <!-- Foto de Perfil -->
+    <script src="js/perfil.js"></script>
+    <!-- Gestão de Usuários -->
+    <script src="js/usuarios.js"></script>
+</body>
+</html>
