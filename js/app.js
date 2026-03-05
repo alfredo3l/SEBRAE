@@ -1272,9 +1272,30 @@ async function visualizarParceiroBusca(cpf, btnEl) {
     }
 }
 
+// Cache do role (mesma chave do auth.js) para exibir botões na página de detalhe sem esperar a rede
+const _CACHE_ROLE_DETALHE = 'sbr_navbar_role';
+
+/**
+ * Aplica permissões na página de detalhe usando o role em cache (síncrono).
+ * Assim os botões Editar e Enviar Termo aparecem logo no primeiro paint, sem esperar verificarAutenticacao.
+ */
+function aplicarPermissoesDetalheComCache() {
+    if (!document.getElementById('parceiro-nome')) return;
+    const role = sessionStorage.getItem(_CACHE_ROLE_DETALHE);
+    if (role !== 'admin' && role !== 'operador') return;
+    const btnEditar = document.querySelector('.btn-editar-parceiro');
+    const btnEnviar = document.querySelector('.btn-enviar-termo');
+    if (btnEditar) btnEditar.style.display = '';
+    if (btnEnviar) btnEnviar.style.display = '';
+}
+
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', async function () {
     try {
+        // Página de detalhe: exibir botões Editar e Enviar Termo imediatamente se o usuário tem permissão (cache).
+        // Evita o “flash” de só Voltar + Buscar e melhora a experiência.
+        aplicarPermissoesDetalheComCache();
+
         // Garante que _perfilAtual está carregado antes de renderizar qualquer página.
         // verificarAutenticacao() busca o perfil do banco e redireciona se não autenticado.
         const session = await verificarAutenticacao();

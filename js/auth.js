@@ -29,10 +29,12 @@ function preencherNavbarComCache() {
         atualizarNavbarAvatar(foto);
     }
 
-    // Mostra/oculta o botão de menu (3 pontinhos) com base no role em cache
+    // Mostra/oculta o botão de menu (3 pontinhos) e a seção "Gestão de Usuários" com base no role em cache
     const menuWrapper = document.querySelector('.navbar-dropdown-wrapper');
+    const linkUsuarios = document.querySelector('.navbar-dropdown-section.link-usuarios');
     if (menuWrapper && role) {
         menuWrapper.style.display = (role === 'admin') ? '' : 'none';
+        if (linkUsuarios) linkUsuarios.style.display = (role === 'admin') ? '' : 'none';
     }
 }
 
@@ -115,8 +117,10 @@ async function verificarAutenticacao() {
     if (userInfoSpan) userInfoSpan.textContent = nome;
 
     const menuWrapper = document.querySelector('.navbar-dropdown-wrapper');
+    const linkUsuarios = document.querySelector('.navbar-dropdown-section.link-usuarios');
     if (menuWrapper) {
         menuWrapper.style.display = (perfil?.role === 'admin') ? '' : 'none';
+        if (linkUsuarios) linkUsuarios.style.display = (perfil?.role === 'admin') ? '' : 'none';
     }
 
     if (perfil?.foto_url && typeof atualizarNavbarAvatar === 'function') {
@@ -204,7 +208,8 @@ function configurarBotaoSair() {
 /**
  * Abre/fecha o dropdown do menu (3 pontinhos)
  */
-function toggleMenuDropdown() {
+function toggleMenuDropdown(e) {
+    if (e) e.stopPropagation();
     const dropdown = document.getElementById('navbar-dropdown');
     if (!dropdown) return;
     const aberto = dropdown.style.display !== 'none';
