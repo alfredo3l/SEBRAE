@@ -55,18 +55,22 @@ const SUPABASE_ANON_KEY = 'SUA-ANON-KEY-AQUI';
 
 O projeto utiliza a tabela `parceiros` com os seguintes campos:
 
-| Campo              | Tipo      | Descrição                     |
-|--------------------|-----------|-------------------------------|
-| id                 | uuid      | Identificador único (PK)      |
-| cpf                | text      | CPF do parceiro (unique)      |
-| nome_razao_social  | text      | Nome ou razão social          |
-| telefone           | text      | Telefone do parceiro          |
-| termo_aceito       | boolean   | Se aceitou o termo LGPD       |
-| recusado           | boolean   | Se recusou o termo LGPD (exibe "Recusado" no status) |
-| assinatura_digital | text      | Hash da assinatura digital    |
-| enviado_piiq       | boolean   | Se foi enviado ao PIIq        |
-| data_envio         | timestamp | Data do envio                 |
-| created_at         | timestamp | Data de criação do registro   |
+| Campo                  | Tipo      | Descrição                                                     |
+|------------------------|-----------|---------------------------------------------------------------|
+| id                     | uuid      | Identificador único (PK)                                      |
+| cpf                    | text      | CPF do parceiro (unique)                                      |
+| nome_razao_social      | text      | Nome ou razão social                                          |
+| telefone               | text      | Telefone do parceiro                                          |
+| id_salesforce          | text      | Account Id no Salesforce/FOCO                                 |
+| id_contato_salesforce  | text      | Contact Id no Salesforce/FOCO (para sincronizar telefone)     |
+| termo_aceito           | boolean   | Se aceitou o termo LGPD                                       |
+| recusado               | boolean   | Se recusou o termo LGPD (exibe "Recusado" no status)           |
+| assinatura_digital     | text      | Hash da assinatura digital                                    |
+| enviado_piiq           | boolean   | Se foi enviado ao PIIq                                        |
+| data_envio             | timestamp | Data do envio                                                 |
+| data_aceite            | timestamp | Data e hora do aceite do termo                                |
+| data_recusa            | timestamp | Data e hora da recusa do termo (mesmo formato de data_aceite)|
+| created_at             | timestamp | Data de criação do registro                                   |
 
 ### 5. Inicie o servidor de desenvolvimento
 

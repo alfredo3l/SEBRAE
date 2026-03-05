@@ -1351,8 +1351,15 @@ body {
     cursor: pointer;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     transition: background-color 0.2s;
+}
+
+.btn-salvar .btn-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .btn-salvar:hover {

@@ -89,7 +89,7 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -99,7 +99,7 @@ const server = http.createServer(async (req, res) => {
 
     const urlObj = new URL(req.url, `http://localhost:${PORT}`);
 
-    // Rota da API SEBRAE
+    // Rota da API SEBRAE - Query
     if (urlObj.pathname === '/api/sebrae/query') {
         const q = urlObj.searchParams.get('q');
         if (!q) {
@@ -123,6 +123,60 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: err.message }));
         }
+        return;
+    }
+
+    // Rota da API SEBRAE - PATCH Contact (telefone)
+    const contactMatch = urlObj.pathname.match(/^\/api\/sebrae\/contact\/([^/]+)$/);
+    if (contactMatch && req.method === 'PATCH') {
+        const contactId = contactMatch[1];
+
+        const chunks = [];
+        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('end', async () => {
+            let body;
+            try {
+                body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+            } catch {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Body JSON inválido.' }));
+                return;
+            }
+            const phone = body.Phone;
+            if (phone === undefined || phone === null) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Campo "Phone" é obrigatório no body.' }));
+                return;
+            }
+
+            try {
+                const token = await obterToken();
+                const url = `${SEBRAE_API_BASE}/services/data/v64.0/sobjects/Contact/${contactId}`;
+                const sfResp = await fetch(url, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ Phone: String(phone) })
+                });
+
+                if (!sfResp.ok) {
+                    const txt = await sfResp.text();
+                    let errBody;
+                    try { errBody = JSON.parse(txt); } catch { errBody = { message: txt }; }
+                    res.writeHead(sfResp.status, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ etapa: 'patch', status: sfResp.status, body: errBody }));
+                    return;
+                }
+                res.writeHead(204);
+                res.end();
+            } catch (err) {
+                console.error('  [API PATCH Contact] Erro:', err.message);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
         return;
     }
 

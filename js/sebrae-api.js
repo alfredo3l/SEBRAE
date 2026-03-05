@@ -102,6 +102,70 @@ function mapearContatoParaTabela(record) {
 }
 
 /**
+ * Atualiza o telefone do Contact no Salesforce/FOCO via proxy.
+ * contactId: Id do Contact (18 caracteres)
+ * telefone: valor do campo Phone (ex: "(67)99999-9999")
+ * Retorna { ok: true } em sucesso (204). Em erro lança ou retorna { ok: false, error, status }.
+ */
+async function atualizarTelefoneContactSebrae(contactId, telefone) {
+    const url = `${SEBRAE_PROXY}/api/sebrae/contact/${encodeURIComponent(contactId)}`;
+    const resp = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Phone: telefone })
+    });
+    if (resp.ok) {
+        return { ok: true };
+    }
+    const body = await resp.json().catch(() => ({}));
+    const err = new Error(body.error || body.body?.message || `Erro ${resp.status}`);
+    err.status = resp.status;
+    err.body = body;
+    throw err;
+}
+
+/**
+ * Busca o Contact Id no Salesforce.
+ * Tenta na ordem:
+ *   1. Por AccountId (id_salesforce) — mais confiável pois já está armazenado
+ *   2. Por CPF__c — fallback
+ * Retorna o Id do Contact (string) ou null se não encontrado.
+ */
+async function buscarContactIdSalesforce(cpf, accountId) {
+    async function executarQuery(soql) {
+        const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(soql)}`;
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            const records = data.records || [];
+            return records[0]?.Id || null;
+        } catch {
+            return null;
+        }
+    }
+
+    // Tentativa 1: busca pelo AccountId (mais rápido e confiável)
+    if (accountId && accountId !== '-') {
+        const idEscaped = accountId.replace(/'/g, "\\'");
+        const id = await executarQuery(`SELECT Id FROM Contact WHERE AccountId = '${idEscaped}' LIMIT 1`);
+        if (id) return id;
+    }
+
+    // Tentativa 2: busca pelo CPF__c
+    if (cpf && cpf !== '—') {
+        const cpfFormatado = formatarCPFSebrae(cpf.replace(/\D/g, ''));
+        if (cpfFormatado.length >= 14) {
+            const cpfEscaped = cpfFormatado.replace(/'/g, "\\'");
+            const id = await executarQuery(`SELECT Id FROM Contact WHERE CPF__c = '${cpfEscaped}' LIMIT 1`);
+            if (id) return id;
+        }
+    }
+
+    return null;
+}
+
+/**
  * Busca o ID do parceiro no Supabase pelo CPF para redirecionar ao detalhe.
  * Retorna o ID ou null se não encontrado.
  */

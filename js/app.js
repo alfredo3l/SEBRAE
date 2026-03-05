@@ -100,7 +100,7 @@ async function carregarParceiros() {
     const tbody = document.getElementById('tbody-parceiros');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
     document.getElementById('pagination-status')?.innerText && (document.getElementById('pagination-status').textContent = '');
     document.getElementById('pagination-parceiros') && (document.getElementById('pagination-parceiros').innerHTML = '');
 
@@ -111,7 +111,7 @@ async function carregarParceiros() {
 
     if (error) {
         console.error('Erro ao carregar parceiros:', error.message);
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#dc3545;">Erro ao carregar dados.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#dc3545;">Erro ao carregar dados.</td></tr>';
         return;
     }
 
@@ -138,7 +138,7 @@ function renderizarTabelaParceiros() {
     tbody.innerHTML = '';
 
     if (paginados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
     } else {
         // Renderiza todas as linhas de forma síncrona de uma só vez
         paginados.forEach(p => tbody.appendChild(criarLinhaParceiro(p)));
@@ -249,6 +249,9 @@ function criarLinhaParceiro(p) {
     // Data Aceite
     const dataAceite = formatarDataHora(p.data_aceite);
 
+    // Data Recusa
+    const dataRecusa = formatarDataHora(p.data_recusa);
+
     // Data Alteração (updated_at)
     const dataAlteracao = formatarDataHora(p.updated_at);
 
@@ -269,6 +272,7 @@ function criarLinhaParceiro(p) {
         <td>${termoBadge}</td>
         <td>${dataEnvio}</td>
         <td>${dataAceite}</td>
+        <td>${dataRecusa}</td>
         <td>${dataAlteracao}</td>
         <td>${acoes}</td>
     `;
@@ -677,7 +681,7 @@ function abrirModalEdicao() {
  */
 function deletarParceiro() {
     if (!usuarioPodeEditar()) {
-        alert('Você não tem permissão para excluir parceiros.');
+        alert('Você não tem permissão para excluir clientes.');
         return;
     }
     if (!parceiroAtual) return;
@@ -742,12 +746,12 @@ async function confirmarExclusao() {
             .eq('id', parceiroAtual.id);
 
         if (error) {
-            erroMsg.textContent = 'Erro ao excluir: ' + error.message;
+            erroMsg.textContent = 'Erro ao excluir cliente: ' + error.message;
             erroDiv.style.display = 'flex';
             return;
         }
 
-        document.getElementById('excluir-sucesso-msg').textContent = `Parceiro "${parceiroAtual.nome_razao_social}" excluído com sucesso!`;
+        document.getElementById('excluir-sucesso-msg').textContent = `Cliente "${parceiroAtual.nome_razao_social}" excluído com sucesso!`;
         sucessoDiv.style.display = 'flex';
 
         setTimeout(() => {
@@ -817,8 +821,41 @@ async function salvarEdicao(event) {
             return;
         }
 
-        // Sucesso
-        document.getElementById('edicao-sucesso-msg').textContent = 'Parceiro atualizado com sucesso!';
+        let sucessoMsg = 'Parceiro atualizado com sucesso!';
+
+        // Atualizar telefone no Salesforce/FOCO (Contact) via API
+        let contactId = parceiroAtual.id_contato_salesforce || null;
+        console.log('[SalvarEdicao] id_contato_salesforce:', contactId);
+
+        if (!contactId) {
+            console.log('[SalvarEdicao] Buscando Contact Id no Salesforce por AccountId/CPF...');
+            contactId = await buscarContactIdSalesforce(
+                parceiroAtual.cpf || null,
+                parceiroAtual.id_salesforce || null
+            );
+            console.log('[SalvarEdicao] Contact Id encontrado:', contactId);
+            if (contactId) {
+                await supabaseClient
+                    .from('parceiros')
+                    .update({ id_contato_salesforce: contactId })
+                    .eq('id', id);
+            }
+        }
+
+        if (contactId) {
+            try {
+                await atualizarTelefoneContactSebrae(contactId, telefone);
+                console.log('[SalvarEdicao] Telefone sincronizado no SEBRAE com sucesso.');
+            } catch (err) {
+                console.error('[SalvarEdicao] Erro ao sincronizar telefone no SEBRAE:', err);
+                sucessoMsg = 'Parceiro atualizado! Aviso: o telefone não pôde ser sincronizado no SEBRAE (' + (err.message || 'erro desconhecido') + ').';
+            }
+        } else {
+            console.warn('[SalvarEdicao] Contact Id não encontrado — sincronização com SEBRAE ignorada.');
+            sucessoMsg = 'Parceiro atualizado! Aviso: Contact Id do SEBRAE não encontrado — o telefone não foi sincronizado no Salesforce.';
+        }
+
+        document.getElementById('edicao-sucesso-msg').textContent = sucessoMsg;
         sucessoDiv.style.display = 'flex';
 
         // Recarrega os dados na página
@@ -1254,7 +1291,8 @@ async function visualizarParceiroBusca(cpf, btnEl) {
                     telefone: telefone,
                     termo_aceito: false,
                     enviado_piiq: false,
-                    id_salesforce: registro.account_id || null
+                    id_salesforce: registro.account_id || null,
+                    id_contato_salesforce: registro.id_contato_salesforce || null
                 }])
                 .select('id')
                 .single();
