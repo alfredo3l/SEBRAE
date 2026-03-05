@@ -62,6 +62,7 @@ O projeto utiliza a tabela `parceiros` com os seguintes campos:
 | nome_razao_social  | text      | Nome ou razão social          |
 | telefone           | text      | Telefone do parceiro          |
 | termo_aceito       | boolean   | Se aceitou o termo LGPD       |
+| recusado           | boolean   | Se recusou o termo LGPD (exibe "Recusado" no status) |
 | assinatura_digital | text      | Hash da assinatura digital    |
 | enviado_piiq       | boolean   | Se foi enviado ao PIIq        |
 | data_envio         | timestamp | Data do envio                 |

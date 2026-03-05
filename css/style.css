@@ -612,6 +612,18 @@ body {
     gap: 4px;
 }
 
+.badge-recusado {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 3px 12px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .badge-pendente {
     background-color: #6c757d;
     color: #fff;
@@ -828,6 +840,10 @@ body {
 
 .info-item .badge-nao {
     color: #721c24;
+}
+
+.info-item .badge-recusado {
+    color: #856404;
 }
 
 .info-item .badge-situacao-inativo {

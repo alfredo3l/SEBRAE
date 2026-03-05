@@ -237,6 +237,8 @@ function criarLinhaParceiro(p) {
     let termoBadge = '';
     if (p.termo_aceito) {
         termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+    } else if (p.recusado) {
+        termoBadge = '<span class="badge-recusado"><i class="fas fa-ban"></i> Recusado</span>';
     } else {
         termoBadge = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
     }
@@ -292,6 +294,8 @@ async function filtrarParceiros() {
     // Filtro de status do termo
     if (status === 'aceito') {
         query = query.eq('termo_aceito', true);
+    } else if (status === 'recusado') {
+        query = query.eq('termo_aceito', false).eq('recusado', true);
     } else if (status === 'nao_aceito') {
         query = query.eq('termo_aceito', false);
     }
@@ -553,6 +557,8 @@ async function carregarDetalhe() {
                 termoHTML += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="abrirTermoPDF(\'' + parceiro.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
             }
             infoTermo.innerHTML = termoHTML;
+        } else if (parceiro.recusado) {
+            infoTermo.innerHTML = '<span class="badge-recusado"><i class="fas fa-ban"></i> Recusado</span>';
         } else {
             infoTermo.innerHTML = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
         }
@@ -585,15 +591,15 @@ async function carregarDetalhe() {
         const telefoneValido = parceiro.telefone && parceiro.telefone.length >= 13;
         const nomeValido = parceiro.nome_razao_social && parceiro.nome_razao_social.length > 2;
 
+        const termoLabel = parceiro.termo_aceito
+            ? 'Termo LGPD Aceito'
+            : (parceiro.recusado ? 'Termo LGPD Recusado' : 'Termo LGPD Não Aceito');
         const validacoes = [
             { label: 'CPF Válido', valido: cpfValido },
             { label: 'Cadastrado no FOCO', valido: true },
             { label: 'Nome Válido', valido: nomeValido },
             { label: 'Telefone Válido', valido: telefoneValido },
-            {
-                label: parceiro.termo_aceito ? 'Termo LGPD Aceito' : 'Termo LGPD Não Aceito',
-                valido: parceiro.termo_aceito
-            }
+            { label: termoLabel, valido: parceiro.termo_aceito }
         ];
 
         validacoes.forEach(v => {
@@ -608,7 +614,14 @@ async function carregarDetalhe() {
     const infoMessage = document.querySelector('.info-message span');
     if (infoMessage) {
         const telefoneValido = parceiro.telefone && parceiro.telefone.length >= 13;
-        if (telefoneValido && !parceiro.termo_aceito) {
+        if (parceiro.recusado) {
+            infoMessage.textContent = 'Este parceiro recusou o termo LGPD.';
+            document.querySelector('.info-message').style.display = 'flex';
+            document.querySelector('.info-message').style.backgroundColor = '';
+            document.querySelector('.info-message').style.borderColor = '';
+            document.querySelector('.info-message').style.color = '';
+            document.querySelector('.info-message i') && (document.querySelector('.info-message i').style.color = '');
+        } else if (telefoneValido && !parceiro.termo_aceito) {
             infoMessage.textContent = 'Este parceiro pode receber o termo LGPD via WhatsApp.';
             document.querySelector('.info-message').style.display = 'flex';
         } else if (parceiro.termo_aceito) {
