@@ -236,7 +236,13 @@ function criarLinhaParceiro(p) {
     // Termo Aceito — renderiza badge imediatamente; botão PDF é adicionado depois em paralelo
     let termoBadge = '';
     if (p.termo_aceito) {
-        termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+        if (p.termo_aceito_foco) {
+            termoBadge = ''
+                + '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>'
+                + ' <span class="badge-foco" style="margin-left:6px; padding:2px 6px; border-radius:10px; background:#004085; color:#fff; font-size:10px; font-weight:600;">FOCO</span>';
+        } else {
+            termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+        }
     } else if (p.recusado) {
         termoBadge = '<span class="badge-recusado"><i class="fas fa-ban"></i> Recusado</span>';
     } else {
@@ -557,6 +563,9 @@ async function carregarDetalhe() {
         if (parceiro.termo_aceito) {
             const temPDF = await verificarTermoPDF(parceiro.cpf);
             let termoHTML = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
+            if (parceiro.termo_aceito_foco) {
+                termoHTML += ' <span class="badge-foco" style="margin-left:6px; padding:2px 6px; border-radius:10px; background:#004085; color:#fff; font-size:10px; font-weight:600;">FOCO</span>';
+            }
             if (temPDF) {
                 termoHTML += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="abrirTermoPDF(\'' + parceiro.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
             }
@@ -989,6 +998,7 @@ async function cadastrarParceiro(event) {
                 nome_razao_social: nome,
                 telefone: telefone,
                 termo_aceito: false,
+                termo_aceito_foco: false,
                 enviado_piiq: false
             }])
             .select();
@@ -1064,8 +1074,9 @@ document.addEventListener('keydown', function (e) {
 let resultadosBusca = [];
 let paginaBusca = 1;
 let _buscaRegistrosPorCPF = {};
-
 let _buscaFiltroDebounce = null;
+let _buscaEmAndamento = false;
+let _buscaTimeoutUiId = null;
 
 function abrirModalBusca() {
     document.getElementById('modal-busca').style.display = 'flex';
@@ -1107,9 +1118,64 @@ async function executarBuscaParceiro() {
     const termo = document.getElementById('busca-termo').value.trim();
     if (!termo) return;
 
+    // Evita múltiplas buscas concorrentes
+    if (_buscaEmAndamento) return;
+    _buscaEmAndamento = true;
+
+    const inputTermo = document.getElementById('busca-termo');
+    const btnBuscar = document.querySelector('.btn-buscar-modal');
+    const loadingEl = document.getElementById('busca-loading');
+    const loadingTextoEl = loadingEl ? loadingEl.querySelector('span') : null;
+
+    // Mensagem de loading diferente para CPF x Nome/Telefone
+    const ehCPF = typeof pareceCPF === 'function' && pareceCPF(termo);
+    const ehTelefone = typeof pareceTelefone === 'function' && pareceTelefone(termo);
+    const textoOriginalLoading = loadingTextoEl ? loadingTextoEl.textContent : null;
+
+    if (loadingTextoEl) {
+        if (ehCPF) {
+            loadingTextoEl.textContent = 'Buscando CPF...';
+        } else if (ehTelefone) {
+            loadingTextoEl.textContent = 'Buscando telefone (pode levar alguns segundos)...';
+        } else {
+            loadingTextoEl.textContent = 'Buscando por nome (pode levar alguns segundos)...';
+        }
+    }
+
+    if (inputTermo) inputTermo.disabled = true;
+    if (btnBuscar) {
+        btnBuscar.disabled = true;
+        btnBuscar.classList.add('is-loading');
+    }
+
     document.getElementById('busca-loading').style.display = 'flex';
     document.getElementById('busca-resultados-container').style.display = 'none';
     document.getElementById('busca-vazio').style.display = 'none';
+
+    // Fallback de segurança: mesmo que a Promise do fetch nunca resolva/rejeite,
+    // garantimos que a UI não fique com o loading travado indefinidamente.
+    if (_buscaTimeoutUiId) {
+        clearTimeout(_buscaTimeoutUiId);
+    }
+    _buscaTimeoutUiId = setTimeout(() => {
+        const vazioEl = document.getElementById('busca-vazio');
+        if (vazioEl) {
+            vazioEl.style.display = 'flex';
+            vazioEl.innerHTML =
+                `<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i>
+                 <span style="color:#dc3545;">A busca demorou mais que o esperado e foi interrompida para não travar a tela. Nenhuma consulta está em andamento neste momento.</span>`;
+        }
+        document.getElementById('busca-loading').style.display = 'none';
+        if (inputTermo) inputTermo.disabled = false;
+        if (btnBuscar) {
+            btnBuscar.disabled = false;
+            btnBuscar.classList.remove('is-loading');
+        }
+        if (loadingTextoEl && textoOriginalLoading !== null) {
+            loadingTextoEl.textContent = textoOriginalLoading;
+        }
+        _buscaEmAndamento = false;
+    }, 35000);
 
     try {
         const resultado = await buscarContatosSebrae(termo);
@@ -1136,12 +1202,34 @@ async function executarBuscaParceiro() {
         }
     } catch (err) {
         console.error('Erro ao buscar na API SEBRAE:', err);
-        document.getElementById('busca-vazio').style.display = 'flex';
-        document.getElementById('busca-vazio').innerHTML =
-            `<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i>
-             <span style="color:#dc3545;">Erro ao conectar com a API SEBRAE. Verifique o console para detalhes.</span>`;
+        const vazioEl = document.getElementById('busca-vazio');
+        if (vazioEl) {
+            vazioEl.style.display = 'flex';
+            const mensagem = err && err.message
+                ? err.message
+                : 'Erro ao conectar com a API SEBRAE. Verifique o console para detalhes.';
+            vazioEl.innerHTML =
+                `<i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i>
+                 <span style="color:#dc3545;">${mensagem}</span>`;
+        }
     } finally {
+        if (_buscaTimeoutUiId) {
+            clearTimeout(_buscaTimeoutUiId);
+            _buscaTimeoutUiId = null;
+        }
+
         document.getElementById('busca-loading').style.display = 'none';
+
+        if (inputTermo) inputTermo.disabled = false;
+        if (btnBuscar) {
+            btnBuscar.disabled = false;
+            btnBuscar.classList.remove('is-loading');
+        }
+        if (loadingTextoEl && textoOriginalLoading !== null) {
+            loadingTextoEl.textContent = textoOriginalLoading;
+        }
+
+        _buscaEmAndamento = false;
     }
 }
 
@@ -1289,7 +1377,8 @@ async function visualizarParceiroBusca(cpf, btnEl) {
                     cpf: registro.cpf,
                     nome_razao_social: (registro.nome || '').toUpperCase(),
                     telefone: telefone,
-                    termo_aceito: false,
+                    termo_aceito: lgpdParaBoolean(registro.lgpd),
+                    termo_aceito_foco: lgpdParaBoolean(registro.lgpd),
                     enviado_piiq: false,
                     id_salesforce: registro.account_id || null,
                     id_contato_salesforce: registro.id_contato_salesforce || null

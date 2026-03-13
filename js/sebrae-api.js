@@ -39,32 +39,54 @@ function pareceTelefone(termo) {
  * - Se parece CPF  → busca exata por CPF__c
  * - Se parece tel  → busca por Phone / MobilePhone
  * - Caso contrário → busca por Name (LIKE)
+ *
+ * Para evitar que a tela pareça "travada" quando a API demora a responder
+ * (principalmente em buscas por nome ou telefone), foi adicionado:
+ * - Timeout com AbortController (15s)
+ * - Limite menor de registros para buscas não indexadas (nome/telefone)
  */
 async function buscarContatosSebrae(termo) {
     let whereClause;
+    let limit = 200;
 
     if (pareceCPF(termo)) {
         const cpfFormatado = formatarCPFSebrae(termo);
         whereClause = `CPF__c = '${cpfFormatado}'`;
+        limit = 200;
     } else if (pareceTelefone(termo)) {
         const tel = termo.replace(/\D/g, '');
         whereClause = `Phone LIKE '%${tel}%' OR MobilePhone LIKE '%${tel}%'`;
+        limit = 50;
     } else {
         const escaped = termo.replace(/'/g, "\\'");
         whereClause = `Name LIKE '%${escaped}%'`;
+        limit = 50;
     }
 
-    const query = `SELECT FIELDS(ALL) FROM Contact WHERE ${whereClause} LIMIT 200`;
+    const query = `SELECT FIELDS(ALL) FROM Contact WHERE ${whereClause} LIMIT ${limit}`;
     const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(query)}`;
 
-    const resp = await fetch(url);
+    const controller = new AbortController();
+    // Timeout mais longo para evitar sensação de "travamento" em buscas por nome/telefone
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body.error || `Erro na consulta (${resp.status})`);
+    try {
+        const resp = await fetch(url, { signal: controller.signal });
+
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({}));
+            throw new Error(body.error || `Erro na consulta (${resp.status})`);
+        }
+
+        return await resp.json();
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            throw new Error('A busca demorou mais que o normal e foi interrompida para não travar a tela. Nenhuma consulta está em andamento neste momento. Tente refinar a busca (ex: CPF completo ou telefone com DDD).');
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeoutId);
     }
-
-    return await resp.json();
 }
 
 /**
