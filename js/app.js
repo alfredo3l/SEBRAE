@@ -1034,29 +1034,8 @@ async function cadastrarParceiro(event) {
     }
 }
 
-// Fechar modal ao clicar fora
-document.addEventListener('click', function (e) {
-    const modalCadastro = document.getElementById('modal-cadastro');
-    if (modalCadastro && e.target === modalCadastro) {
-        fecharModalCadastro();
-    }
-    const modalEdicao = document.getElementById('modal-edicao');
-    if (modalEdicao && e.target === modalEdicao) {
-        fecharModalEdicao();
-    }
-    const modalEnviarTermo = document.getElementById('modal-enviar-termo');
-    if (modalEnviarTermo && e.target === modalEnviarTermo) {
-        fecharModalEnviarTermo();
-    }
-    const modalExcluir = document.getElementById('modal-excluir');
-    if (modalExcluir && e.target === modalExcluir) {
-        fecharModalExcluir();
-    }
-    const modalBusca = document.getElementById('modal-busca');
-    if (modalBusca && e.target === modalBusca) {
-        fecharModalBusca();
-    }
-});
+// Removido o fechamento automático ao clicar no overlay escuro.
+// A partir daqui, os modais só são fechados pelos botões explícitos (X, Cancelar, etc.).
 
 // Fechar modal com ESC
 document.addEventListener('keydown', function (e) {
