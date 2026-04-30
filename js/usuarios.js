@@ -194,7 +194,10 @@ function abrirModalNovoUsuario() {
     document.getElementById('usr-role').value  = 'visualizador';
     document.getElementById('usr-email').readOnly = false;
     document.getElementById('usr-senha').required = true;
+    document.getElementById('usr-senha').disabled = false;
     document.getElementById('senha-obrigatorio').style.display = '';
+    document.getElementById('campo-senha').style.display = '';
+    document.getElementById('campo-senha-bloqueada').style.display = 'none';
     document.getElementById('campo-ativo').style.display  = 'none';
     document.getElementById('campo-motivo').style.display = 'none';
 
@@ -222,7 +225,10 @@ function abrirModalEditarUsuario(id) {
     // Email não pode ser alterado após criação
     document.getElementById('usr-email').readOnly = true;
     document.getElementById('usr-senha').required = false;
+    document.getElementById('usr-senha').disabled = true;
     document.getElementById('senha-obrigatorio').style.display = 'none';
+    document.getElementById('campo-senha').style.display = 'none';
+    document.getElementById('campo-senha-bloqueada').style.display = '';
 
     // Mostrar campos de status (exceto para o admin principal)
     const isAdminPrincipal = u.email === 'admin@sebrae.com.br';

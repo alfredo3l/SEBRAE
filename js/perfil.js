@@ -82,6 +82,91 @@ function fecharModalPerfil() {
     if (modal) modal.style.display = 'none';
 }
 
+// ============================================================
+// ALTERAR SENHA (usuário logado)
+// ============================================================
+function _setLoadingAlterarSenha(loading) {
+    const btn = document.getElementById('btn-perfil-alterar-senha');
+    if (!btn) return;
+    const spinner = btn.querySelector('.spinner');
+    const text = btn.querySelector('.btn-text');
+    btn.disabled = !!loading;
+    if (spinner) spinner.style.display = loading ? '' : 'none';
+    if (text) text.style.display = loading ? 'none' : '';
+}
+
+function _limparCamposSenhaPerfil() {
+    const atual = document.getElementById('perfil-senha-atual');
+    const nova = document.getElementById('perfil-nova-senha');
+    const conf = document.getElementById('perfil-confirmar-senha');
+    if (atual) atual.value = '';
+    if (nova) nova.value = '';
+    if (conf) conf.value = '';
+}
+
+async function alterarSenhaPerfil(event) {
+    if (event) event.preventDefault();
+
+    const senhaAtual = document.getElementById('perfil-senha-atual')?.value ?? '';
+    const novaSenha = document.getElementById('perfil-nova-senha')?.value ?? '';
+    const confirmar = document.getElementById('perfil-confirmar-senha')?.value ?? '';
+
+    esconderAlertaPerfil();
+
+    if (!senhaAtual || !novaSenha || !confirmar) {
+        mostrarAlertaPerfil('Preencha todos os campos para alterar a senha.', 'erro');
+        return;
+    }
+
+    if (novaSenha.length < 8) {
+        mostrarAlertaPerfil('A nova senha deve ter no mínimo 8 caracteres.', 'erro');
+        return;
+    }
+
+    if (novaSenha !== confirmar) {
+        mostrarAlertaPerfil('A confirmação da senha não confere.', 'erro');
+        return;
+    }
+
+    _setLoadingAlterarSenha(true);
+
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session?.user?.email) {
+            mostrarAlertaPerfil('Sessão inválida. Faça login novamente.', 'erro');
+            return;
+        }
+
+        // Reautentica para garantir "sessão recente"
+        const { error: reauthError } = await supabaseClient.auth.signInWithPassword({
+            email: session.user.email,
+            password: senhaAtual
+        });
+        if (reauthError) {
+            const msg = (reauthError.message || '').includes('Invalid login credentials')
+                ? 'Senha atual incorreta.'
+                : 'Não foi possível confirmar sua senha atual.';
+            mostrarAlertaPerfil(msg, 'erro');
+            return;
+        }
+
+        const { error: updateError } = await supabaseClient.auth.updateUser({ password: novaSenha });
+        if (updateError) throw updateError;
+
+        _limparCamposSenhaPerfil();
+        mostrarAlertaPerfil('Senha alterada com sucesso!', 'sucesso');
+
+    } catch (err) {
+        console.error('Erro ao alterar senha:', err);
+        const msg = (err.message || '').includes('Password should be at least')
+            ? 'A nova senha é fraca. Use pelo menos 8 caracteres.'
+            : 'Erro ao alterar a senha. Tente novamente.';
+        mostrarAlertaPerfil(msg, 'erro');
+    } finally {
+        _setLoadingAlterarSenha(false);
+    }
+}
+
 // Fecha ao clicar fora
 document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('modal-perfil');

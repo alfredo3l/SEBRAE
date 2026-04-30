@@ -355,6 +355,25 @@
                         <span id="perfil-role-display">—</span>
                     </div>
                 </div>
+                <div class="perfil-info-row" style="margin-top: 14px;">
+                    <div class="perfil-info-item" style="width:100%;">
+                        <label><i class="fas fa-key"></i> Alterar senha</label>
+                        <form id="form-alterar-senha" onsubmit="alterarSenhaPerfil(event)">
+                            <div style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px;">
+                                <input type="password" id="perfil-senha-atual" placeholder="Senha atual" autocomplete="current-password" required>
+                                <input type="password" id="perfil-nova-senha" placeholder="Nova senha (mínimo 8 caracteres)" autocomplete="new-password" minlength="8" required>
+                                <input type="password" id="perfil-confirmar-senha" placeholder="Confirmar nova senha" autocomplete="new-password" minlength="8" required>
+                            </div>
+                            <button type="submit" id="btn-perfil-alterar-senha" class="btn-salvar" style="margin-top: 12px; width: 100%;">
+                                <span class="btn-text"><i class="fas fa-save"></i> Alterar senha</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </form>
+                        <div style="margin-top: 8px; font-size: 0.78rem; color: #6b7280;">
+                            Por segurança, você precisa informar sua senha atual.
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
