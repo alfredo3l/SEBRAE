@@ -9,6 +9,30 @@ let _perfilAtual = null;
 const _CACHE_NOME = 'sbr_navbar_nome';
 const _CACHE_FOTO = 'sbr_navbar_foto';
 const _CACHE_ROLE = 'sbr_navbar_role';
+/** sessionStorage: último envio bem-sucedido de ultimo_acesso (timestamp ms) */
+const _UA_PING_KEY = 'sbr_ultimo_acesso_ping_ms';
+const _UA_PING_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Chama a RPC registrar_ultimo_acesso no Supabase (com throttle por aba).
+ * Ignora erros silenciosamente (ex.: RPC ainda não aplicada no projeto).
+ */
+async function registrarUltimoAcessoThrottled() {
+    try {
+        const now = Date.now();
+        const last = parseInt(sessionStorage.getItem(_UA_PING_KEY) || '0', 10);
+        if (now - last < _UA_PING_INTERVAL_MS) return;
+
+        const { error } = await supabaseClient.rpc('registrar_ultimo_acesso');
+        if (error) {
+            console.warn('registrar_ultimo_acesso:', error.message);
+            return;
+        }
+        sessionStorage.setItem(_UA_PING_KEY, String(now));
+    } catch (e) {
+        console.warn('registrar_ultimo_acesso:', e?.message || e);
+    }
+}
 
 /**
  * Preenche a navbar imediatamente com dados do cache (sessionStorage).
@@ -109,6 +133,10 @@ async function verificarAutenticacao() {
 
     // Armazena o perfil globalmente para uso em outros scripts
     _perfilAtual = perfil;
+
+    if (perfil) {
+        void registrarUltimoAcessoThrottled();
+    }
 
     const nome = perfil?.nome_completo || session.user.user_metadata?.nome || session.user.email;
 
