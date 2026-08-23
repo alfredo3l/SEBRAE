@@ -116,6 +116,7 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
 - **Envio**: webhook n8n único `POST /webhook/TERMOS-URC`, com os dados do cliente, do consultor, da interação e do documento (incluindo o HTML renderizado do termo). O fluxo gera o PDF (Gotenberg) e envia pela Evolution API; em sucesso, o documento vira `enviado` com `data_envio`.
 - **Aceite/recusa**: como o cliente pode ter vários termos aguardando resposta, cada documento enviado recebe uma **letra** e o cliente responde **`1A`** (aceito) ou **`2A`** (não aceito). O fluxo `TERMOS-URC-ASSINADOS` interpreta variações (`1a`, `A1`, “aceito B”), pede esclarecimento quando a resposta é ambígua e orienta o cliente quando recebe áudio, imagem, emoji ou texto aleatório — **nunca adivinha** a qual documento a resposta se refere.
 - **Documento assinado**: PDF com bloco de evidências e **assinatura digital SHA-256** única por documento (calculada sobre id do documento, nome, CPF, nome do termo e data-hora do aceite), salvo no bucket `TermosAceite` e anexado ao Case no FOCO.
+- **Formato do PDF**: gerado pelo Gotenberg em **A4**, com **rodapé numerado** ("Página X de Y") em todas as páginas. A paginação respeita os blocos do documento: quadro de evidências do aceite, nota de validade jurídica + assinatura digital, citações legais e a assinatura do termo **nunca são partidos** entre duas páginas — se não couberem, vão inteiros para a seguinte.
 
 ---
 

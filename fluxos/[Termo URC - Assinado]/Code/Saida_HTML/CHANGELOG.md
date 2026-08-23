@@ -8,7 +8,8 @@
 | Versão | Data | Status | Mudanças | Resultados/observações |
 |---|---|---|---|---|
 | v001 | 2026-08-23 | arquivada | Cópia do fluxo `[Termo LGPD - Assinado]`: HTML fixo do Termo de Consentimento LGPD, sem evidências do aceite. | Servia apenas ao LGPD. |
-| v002 | 2026-08-23 | em produção | Usa `HtmlDocumento` (guardado em `documentos.html_documento`) como corpo e `NomeDocumento` como título; acrescenta o bloco **"Aceite eletrônico registrado"** (nome, CPF, data/hora, canal/telefone, texto exato da resposta, letra do documento e id) e transforma o hash em **assinatura digital do aceite** (inclui id do documento e data/hora). Sem HTML recebido, mantém o corpo do LGPD. | Aplicado na instância em 23/08/2026 15:36. |
+| v002 | 2026-08-23 | arquivada | Usa `HtmlDocumento` (guardado em `documentos.html_documento`) como corpo e `NomeDocumento` como título; acrescenta o bloco **"Aceite eletrônico registrado"** (nome, CPF, data/hora, canal/telefone, texto exato da resposta, letra do documento e id) e transforma o hash em **assinatura digital do aceite** (inclui id do documento e data/hora). Sem HTML recebido, mantém o corpo do LGPD. | Aplicado na instância em 23/08/2026 15:36. |
+| v003 | 2026-08-23 | em produção | **Regras de paginação do PDF**: `break-inside: avoid` nos blocos que não podem ser partidos (quadro de evidências do aceite, fecho com nota jurídica + assinatura digital, citação legal, assinatura do termo e rodapé), `break-after: avoid` no local/data e nos títulos, `orphans`/`widows` nos parágrafos; classes `bloco-evidencias`, `bloco-fecho` e `doc-rodape` aplicadas aos blocos; `overflow:hidden` removido do container (atrapalha a paginação no Chromium). | Antes: 14 de 24 casos com bloco partido (o quadro de evidências quebrava ao meio). Depois: 0 de 24. Validado renderizando com Chrome headless e conferindo o texto página a página, e no PDF real do Gotenberg. |
 
 ## Decisões registradas
 

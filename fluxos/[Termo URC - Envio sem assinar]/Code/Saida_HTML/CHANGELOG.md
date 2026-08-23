@@ -8,7 +8,8 @@
 | Versão | Data | Status | Mudanças | Resultados/observações |
 |---|---|---|---|---|
 | v001 | 2026-08-23 | arquivada | Cópia do fluxo `[Termo LGPD - Envio sem assinar]` — HTML fixo do Termo de Consentimento LGPD. Código idêntico ao versionado em `fluxos/[Termo LGPD - Envio sem assinar]/Code/Saida_HTML/v001.js`. | Só servia ao LGPD: qualquer termo enviado saía com o texto da LGPD. |
-| v002 | 2026-08-23 | em produção | **Documento dinâmico**: usa `HtmlDocumento` (vindo de `documento.html` no webhook) como corpo e `NomeDocumento` como título; remove o `<h3>` duplicado do fragmento; adiciona `<style>` para as classes dos termos (`doc-lacuna`, `doc-citacao`, `doc-assinatura*`); inclui o nome do documento no conteúdo do hash; retorna também `tipo_documento`, `nome_documento` e `documento_id`. Sem HTML recebido, mantém o corpo do LGPD (compatibilidade). | Aplicado na instância em 23/08/2026 15:08. |
+| v002 | 2026-08-23 | arquivada | **Documento dinâmico**: usa `HtmlDocumento` (vindo de `documento.html` no webhook) como corpo e `NomeDocumento` como título; remove o `<h3>` duplicado do fragmento; adiciona `<style>` para as classes dos termos (`doc-lacuna`, `doc-citacao`, `doc-assinatura*`); inclui o nome do documento no conteúdo do hash; retorna também `tipo_documento`, `nome_documento` e `documento_id`. Sem HTML recebido, mantém o corpo do LGPD (compatibilidade). | Aplicado na instância em 23/08/2026 15:08. |
+| v003 | 2026-08-23 | em produção | **Regras de paginação do PDF**: mesmas do fluxo de aceite — `break-inside: avoid` no fecho (nota jurídica + hash), na citação legal, na assinatura e no rodapé; local/data colado à assinatura; `orphans`/`widows`; classes `bloco-fecho` e `doc-rodape`; `overflow:hidden` removido. | Antes: 8 blocos partidos em 24 casos. Depois: 0. |
 
 ## Decisões registradas
 

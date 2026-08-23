@@ -175,3 +175,37 @@ seta_token → [Tem vinculo FOCO?] ──não──→ E LGPD?          (não so
   de `ContentDocumentLink`. Só aí `salvo_foco` vira `true`.
 
 Assim a coluna FOCO da lista passa a significar o que promete: documento anexado ao atendimento.
+
+## Paginação do PDF (23/08/2026)
+
+O HTML enviado ao Gotenberg vinha de um template de **e-mail** e não tinha nenhuma regra de
+paginação: o Chromium quebrava a página em qualquer ponto e chegou a **partir ao meio o quadro
+"ACEITE ELETRÔNICO REGISTRADO"** — nome/CPF/data numa página, resposta do cliente e assinatura
+digital na outra.
+
+**No `Saida_HTML` (v003):**
+
+| Regra | Efeito |
+|---|---|
+| `break-inside: avoid` em `.bloco-evidencias`, `.bloco-fecho`, `.doc-citacao`, `.doc-assinatura`, `.doc-rodape` | esses blocos nunca são partidos: se não couberem no resto da folha, vão inteiros para a próxima |
+| `break-after: avoid` em `.doc-assinatura-espaco` e nos títulos | local/data não se separa da linha de assinatura; título não fica sozinho no pé da página |
+| `orphans: 3; widows: 3` | nenhuma linha solta de parágrafo no começo/fim da página |
+| `overflow:hidden` removido do container | resquício do template de e-mail, atrapalha a paginação no Chromium |
+
+As classes `doc-*` são as mesmas que o sistema grava em `documentos.html_documento`, então
+**documentos antigos também saem paginados corretamente**, sem precisar regerar nada.
+
+**No nó do Gotenberg (`HTTP Request`):** `paperWidth=8.27` / `paperHeight=11.69` (**A4**),
+`marginTop=0.4`, `marginBottom=0.6` (folga do rodapé), `marginLeft/Right=0.3` e
+**`printBackground=true`** — sem este último o fundo verde do quadro de evidências some do PDF.
+Não usar `@page` no CSS: as margens do Gotenberg somariam com as do CSS.
+
+**Rodapé numerado:** o nó `Monta rodape PDF` acrescenta o binário `footer` (`footer.html`) com
+"Página X de Y", impresso pelo Gotenberg em todas as páginas. Cadeia:
+`Convert to File → Monta rodape PDF → HTTP Request`.
+
+**Como foi verificado.** Antes de publicar, o código real do nó foi executado localmente com o
+`html_documento` de termos reais, renderizado em PDF pelo Chrome headless e conferido página a
+página (texto extraído do PDF): **14 de 24 casos partiam blocos antes, 0 depois** no fluxo de
+aceite e 8 → 0 no de envio. Os parâmetros do Gotenberg foram testados num workflow temporário
+isolado — nunca nos fluxos de produção — e o PDF final saiu em A4 com o rodapé correto.
