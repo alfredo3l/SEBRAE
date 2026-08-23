@@ -979,6 +979,9 @@ function deletarParceiro() {
     btn.querySelector('.btn-text').style.display = 'flex';
     btn.querySelector('.spinner').style.display = 'none';
 
+    // Quantos documentos serão apagados junto (FK on delete cascade em documentos)
+    preencherAvisoExclusao();
+
     // Fecha o modal de edição e abre o de exclusão
     fecharModalEdicao();
     modal.style.display = 'flex';
@@ -1052,6 +1055,36 @@ function fecharModalEdicao() {
         modal.style.display = 'none';
         document.body.style.overflow = '';
     }
+}
+
+/**
+ * Diz, no modal de exclusão, quantos documentos serão apagados junto com o
+ * cliente — a FK de `documentos` é ON DELETE CASCADE, então termos já aceitos
+ * (com suas evidências) desaparecem também.
+ */
+async function preencherAvisoExclusao() {
+    const el = document.getElementById('excluir-aviso-docs');
+    if (!el || !parceiroAtual?.id) return;
+
+    el.textContent = 'Verificando documentos vinculados…';
+
+    const { count, error } = await supabaseClient
+        .from('documentos')
+        .select('id', { count: 'exact', head: true })
+        .eq('parceiro_id', parceiroAtual.id);
+
+    if (error) {
+        el.textContent = 'Os documentos vinculados a este cliente também serão apagados.';
+        return;
+    }
+
+    if (!count) {
+        el.textContent = 'Este cliente ainda não possui documentos gerados.';
+        return;
+    }
+
+    el.innerHTML = `Junto com o cliente será(ão) apagado(s) <b>${count} documento(s)</b>, `
+        + 'incluindo termos já aceitos e suas evidências.';
 }
 
 /**

@@ -271,16 +271,90 @@
                             maxlength="150"
                         >
                     </div>
+                    <div class="modal-form-actions" style="justify-content: space-between;">
+                        <button type="button" class="btn-deletar" id="btn-deletar-parceiro" onclick="deletarParceiro()">
+                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                            <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
+                                <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL EXCLUIR CLIENTE ========== -->
+    <!-- Mesmos ids do modal do detalhe: reaproveita deletarParceiro/confirmarExclusao
+         de js/app.js. A exclusão apaga em cascata os documentos do cliente. -->
+    <div class="modal-overlay" id="modal-excluir" style="display: none;">
+        <div class="modal-cadastro-card" style="max-width: 450px;">
+            <div class="modal-cadastro-header" style="background-color: #dc3545;">
+                <h3>
+                    <i class="fas fa-trash-alt"></i>
+                    Excluir Cliente
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalExcluir()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <!-- Mensagem de Sucesso -->
+                <div class="cadastro-sucesso" id="excluir-sucesso" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="excluir-sucesso-msg">Cliente excluído com sucesso!</span>
+                </div>
+                <!-- Mensagem de Erro -->
+                <div class="cadastro-erro" id="excluir-erro" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="excluir-erro-msg">Erro ao excluir cliente.</span>
+                </div>
+
+                <div id="excluir-confirmacao">
+                    <p style="font-size: 0.95rem; color: #333; margin-bottom: 12px;">
+                        Confirma a exclusão do cliente abaixo?
+                    </p>
+
+                    <!-- Alerta: a exclusão leva junto os documentos do cliente (cascata no banco) -->
+                    <div class="alerta-exclusao">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <div>
+                            <strong>Esta ação é permanente e não pode ser desfeita.</strong>
+                            <span id="excluir-aviso-docs">Verificando documentos vinculados…</span>
+                        </div>
+                    </div>
+
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                        <div style="margin-bottom: 8px;">
+                            <strong style="color: #0056a6; font-size: 0.8rem;">Nome/Razão Social:</strong><br>
+                            <span id="excluir-nome" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong style="color: #0056a6; font-size: 0.8rem;">CPF:</strong><br>
+                            <span id="excluir-cpf" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                        <div>
+                            <strong style="color: #0056a6; font-size: 0.8rem;">Telefone:</strong><br>
+                            <span id="excluir-telefone" style="font-size: 0.9rem; color: #333;">-</span>
+                        </div>
+                    </div>
                     <div class="modal-form-actions">
-                        <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
+                        <button type="button" class="btn-cancelar" onclick="fecharModalExcluir()">
                             <i class="fas fa-times"></i> Cancelar
                         </button>
-                        <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
-                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                        <button type="button" class="btn-deletar" id="btn-confirmar-excluir" onclick="confirmarExclusao()">
+                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir definitivamente</span>
                             <span class="spinner" style="display:none;"></span>
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>

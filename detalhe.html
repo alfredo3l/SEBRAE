@@ -291,10 +291,19 @@
                 </div>
 
                 <div id="excluir-confirmacao">
-                    <p style="font-size: 0.95rem; color: #333; margin-bottom: 15px;">
-                        <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
-                        Tem certeza que deseja <strong>excluir</strong> o cliente abaixo? Essa ação não pode ser desfeita.
+                    <p style="font-size: 0.95rem; color: #333; margin-bottom: 12px;">
+                        Confirma a exclusão do cliente abaixo?
                     </p>
+
+                    <!-- Alerta: a exclusão leva junto os documentos do cliente (cascata no banco) -->
+                    <div class="alerta-exclusao">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <div>
+                            <strong>Esta ação é permanente e não pode ser desfeita.</strong>
+                            <span id="excluir-aviso-docs">Verificando documentos vinculados…</span>
+                        </div>
+                    </div>
+
                     <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
                         <div style="margin-bottom: 8px;">
                             <strong style="color: #0056a6; font-size: 0.8rem;">Nome/Razão Social:</strong><br>
@@ -314,7 +323,7 @@
                             <i class="fas fa-times"></i> Cancelar
                         </button>
                         <button type="button" class="btn-deletar" id="btn-confirmar-excluir" onclick="confirmarExclusao()">
-                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir</span>
+                            <span class="btn-text"><i class="fas fa-trash-alt"></i> Excluir definitivamente</span>
                             <span class="spinner" style="display:none;"></span>
                         </button>
                     </div>
