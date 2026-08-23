@@ -34,6 +34,74 @@ async function registrarUltimoAcessoThrottled() {
     }
 }
 
+// ===== Sessão expirada =====
+// Quando a sessão acaba (expirou, foi revogada ou encerrada em outra aba), as
+// consultas ao Supabase passam a falhar. Sem tratamento, a tela mostrava
+// "Erro ao carregar dados" e o usuário não entendia o que fazer — agora ele é
+// levado direto para o login, voltando à página em que estava depois de entrar.
+
+let _redirecionandoLogin = false;
+let _logoutIntencional = false;
+
+/** Estamos na própria tela de login? (evita redirecionar em loop) */
+function ehPaginaLogin() {
+    return window.location.pathname.includes('login');
+}
+
+/**
+ * Manda o usuário para o login, guardando a página atual em `redirect`.
+ * @param {string} motivo - 'expirado' (sessão perdida) ou 'inativo'.
+ */
+function redirecionarParaLogin(motivo) {
+    if (_redirecionandoLogin || ehPaginaLogin()) return;
+    _redirecionandoLogin = true;
+
+    try {
+        sessionStorage.removeItem(_CACHE_NOME);
+        sessionStorage.removeItem(_CACHE_FOTO);
+        sessionStorage.removeItem(_CACHE_ROLE);
+    } catch (_) { }
+
+    const params = new URLSearchParams();
+    if (motivo) params.set('motivo', motivo);
+    const destino = window.location.pathname + window.location.search;
+    if (destino && destino !== '/') params.set('redirect', destino);
+
+    window.location.href = 'login?' + params.toString();
+}
+
+/** Reconhece os erros que significam "sua sessão não vale mais" */
+function erroDeSessao(error) {
+    if (!error) return false;
+    if (error.status === 401 || error.code === 'PGRST301') return true;
+
+    const msg = String(error.message || '').toLowerCase();
+    return msg.includes('jwt expired')
+        || msg.includes('jwt is expired')
+        || msg.includes('invalid jwt')
+        || msg.includes('token is expired')
+        || msg.includes('refresh token')
+        || msg.includes('not authenticated');
+}
+
+/**
+ * Se o erro for de sessão, leva ao login e devolve `true` — assim quem chamou
+ * sabe que não deve exibir a mensagem de erro genérica.
+ */
+function tratarErroDeSessao(error) {
+    if (!erroDeSessao(error)) return false;
+    redirecionarParaLogin('expirado');
+    return true;
+}
+
+// Sessão encerrada pelo próprio Supabase (refresh token inválido/expirado,
+// logout em outra aba): sai da tela em vez de deixar a página quebrada.
+supabaseClient.auth.onAuthStateChange(function (evento) {
+    if (evento === 'SIGNED_OUT' && !_logoutIntencional) {
+        redirecionarParaLogin('expirado');
+    }
+});
+
 /**
  * Preenche a navbar imediatamente com dados do cache (sessionStorage).
  * Chamada de forma SÍNCRONA no DOMContentLoaded para eliminar o flash
@@ -119,13 +187,15 @@ async function verificarAutenticacao() {
     const { data: { session } } = await supabaseClient.auth.getSession();
 
     if (!session) {
-        window.location.href = 'login';
+        // Sem sessão: volta ao login guardando a página que ele tentou abrir
+        redirecionarParaLogin();
         return null;
     }
 
     const perfil = await buscarPerfilUsuario(session.user.id);
 
     if (perfil && !perfil.ativo) {
+        _logoutIntencional = true; // o motivo aqui é "inativo", não sessão expirada
         await supabaseClient.auth.signOut();
         window.location.href = 'login?motivo=inativo';
         return null;
@@ -207,6 +277,8 @@ async function fazerLogin(email, senha) {
  * Realiza o logout do usuário
  */
 async function fazerLogout() {
+    _logoutIntencional = true; // não é sessão expirada: não avisar no login
+
     // Limpa o cache da navbar antes de redirecionar
     try {
         sessionStorage.removeItem(_CACHE_NOME);

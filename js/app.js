@@ -122,18 +122,58 @@ function linhaLGPDDoParceiro(p) {
 }
 
 /**
+ * O cliente já teve alguma movimentação do Termo LGPD? As flags de `parceiros`
+ * são o histórico do fluxo antigo; sem nenhuma delas, ele nunca teve o termo.
+ */
+function temHistoricoLGPD(p) {
+    return !!(p.termo_aceito || p.recusado || p.data_envio || p.data_aceite || p.data_recusa);
+}
+
+/**
+ * Linha de um cliente que ainda não tem documento nenhum. Ele precisa aparecer
+ * na lista para ser acessado, mas sem termo atribuído — o documento só existe
+ * depois que o consultor gera um.
+ */
+function linhaSemDocumento(p) {
+    return {
+        parceiro: p,
+        doc: {
+            tipo_documento: null,
+            nome_documento: '—',
+            status: 'sem_documento',
+            salvo_foco: false,
+            arquivo_path: null,
+            data_envio: null,
+            data_aceite: null,
+            _semDocumento: true
+        }
+    };
+}
+
+/**
  * Achata parceiros + documentos em linhas de documento (Tela 1 da POC):
- * 1 linha LGPD por parceiro (derivada das flags) + 1 linha por registro
- * de documentos com tipo != termo-lgpd.
+ * 1 linha por registro de `documentos` + a linha derivada do Termo LGPD
+ * quando o cliente tem histórico dele nas flags de `parceiros`.
+ * Cliente sem nenhum documento entra com uma linha "sem documento".
  */
 function montarLinhasDocumentos(parceiros) {
     const linhas = [];
     (parceiros || []).forEach(p => {
-        linhas.push(linhaLGPDDoParceiro(p));
-        (p.documentos || [])
-            .filter(d => d.tipo_documento !== 'termo-lgpd')
+        const docs = p.documentos || [];
+        const temRegistroLGPD = docs.some(d => d.tipo_documento === 'termo-lgpd');
+        let linhasDoParceiro = 0;
+
+        // Termo LGPD: só quando existe de fato (registro ou histórico do fluxo antigo)
+        if (temRegistroLGPD || temHistoricoLGPD(p)) {
+            linhas.push(linhaLGPDDoParceiro(p));
+            linhasDoParceiro++;
+        }
+
+        docs.filter(d => d.tipo_documento !== 'termo-lgpd')
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            .forEach(d => linhas.push({ parceiro: p, doc: d }));
+            .forEach(d => { linhas.push({ parceiro: p, doc: d }); linhasDoParceiro++; });
+
+        if (linhasDoParceiro === 0) linhas.push(linhaSemDocumento(p));
     });
     return linhas;
 }
@@ -243,6 +283,8 @@ async function carregarParceiros() {
         .order('created_at', { ascending: false });
 
     if (error) {
+        // Sessão expirada leva ao login; só erro real vira mensagem na tela
+        if (tratarErroDeSessao(error)) return;
         console.error('Erro ao carregar parceiros:', error.message);
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#dc3545;">Erro ao carregar dados.</td></tr>';
         return;
@@ -269,6 +311,7 @@ async function recarregarListaAoVivo() {
         .order('created_at', { ascending: false });
 
     if (error) {
+        if (tratarErroDeSessao(error)) return;
         console.warn('Atualização ao vivo falhou:', error.message);
         return;
     }
@@ -398,7 +441,9 @@ const BADGES_STATUS_DOC = {
     aceito:     { classe: 'badge-sim',      icone: 'check-circle',  rotulo: 'Aceito' },
     recusado:   { classe: 'badge-recusado', icone: 'ban',           rotulo: 'Recusado' },
     // Cliente ainda sem documento enviado (linha derivada do Termo LGPD)
-    nao_aceito: { classe: 'badge-pendente', icone: 'clock',         rotulo: 'Pendente' }
+    nao_aceito: { classe: 'badge-pendente', icone: 'clock',         rotulo: 'Pendente' },
+    // Cliente recém-cadastrado: nenhum termo foi gerado para ele ainda
+    sem_documento: { classe: 'badge-pendente', icone: 'minus',      rotulo: 'Sem documento' }
 };
 
 /**
@@ -510,6 +555,17 @@ function aplicarPermissoesDetalhe() {
 
     const btnEditar = document.querySelector('.btn-editar-parceiro');
     if (btnEditar) btnEditar.style.display = '';
+}
+
+/**
+ * Mesma regra na lista de clientes: o botão "Novo Cliente" (cadastro temporário
+ * dos testes) só aparece para quem pode editar.
+ */
+function aplicarPermissoesLista() {
+    if (!usuarioPodeEditar()) return;
+
+    const btnNovo = document.querySelector('.btn-novo-cliente');
+    if (btnNovo) btnNovo.style.display = '';
 }
 
 // ===== Cache leve de navegação (sessionStorage, stale-while-revalidate) =====
@@ -634,6 +690,7 @@ async function carregarDetalhe() {
         .single();
 
     if (error || !parceiro) {
+        if (tratarErroDeSessao(error)) return;
         console.error('Erro ao carregar parceiro:', error?.message);
         if (!emCache) document.getElementById('parceiro-nome').textContent = 'Erro ao carregar parceiro';
         return;
@@ -1048,7 +1105,9 @@ async function salvarEdicao(event) {
         }
 
         invalidarCacheParceiro(id);
-        let sucessoMsg = 'Parceiro atualizado com sucesso!';
+        // A mensagem diz o que de fato aconteceu: o cadastro sempre é salvo, mas
+        // a sincronização no FOCO pode falhar — e o consultor precisa saber disso.
+        let sucessoMsg = 'Cliente atualizado no cadastro e no FOCO.';
 
         // Atualizar telefone no Salesforce/FOCO (Contact) via API
         let contactId = parceiroAtual.id_contato_salesforce || null;
@@ -1077,20 +1136,27 @@ async function salvarEdicao(event) {
                 console.log('[SalvarEdicao] Contato sincronizado no SEBRAE com sucesso.');
             } catch (err) {
                 console.error('[SalvarEdicao] Erro ao sincronizar contato no SEBRAE:', err);
-                sucessoMsg = 'Parceiro atualizado! Aviso: os dados não puderam ser sincronizados no SEBRAE (' + (err.message || 'erro desconhecido') + ').';
+                sucessoMsg = 'Cliente atualizado no cadastro. Atenção: não foi possível atualizar no FOCO ('
+                    + (err.message || 'erro desconhecido') + ').';
             }
         } else {
             console.warn('[SalvarEdicao] Contact Id não encontrado — sincronização com SEBRAE ignorada.');
-            sucessoMsg = 'Parceiro atualizado! Aviso: Contact Id do SEBRAE não encontrado — os dados não foram sincronizados no Salesforce.';
+            sucessoMsg = 'Cliente atualizado no cadastro. Atenção: este cliente não foi localizado no FOCO, '
+                + 'então os dados não foram atualizados lá.';
         }
 
         document.getElementById('edicao-sucesso-msg').textContent = sucessoMsg;
         sucessoDiv.style.display = 'flex';
 
-        // Recarrega os dados na página
+        // Recarrega os dados na página (o modal existe no detalhe e no acompanhamento)
         setTimeout(async () => {
             fecharModalEdicao();
-            await carregarDetalhe();
+            if (document.getElementById('parceiro-nome')) {
+                await carregarDetalhe();
+            } else if (typeof recarregarAcompanhamentoAoVivo === 'function') {
+                await recarregarAcompanhamentoAoVivo();
+                pintarCabecalhoAcompanhamento?.();
+            }
         }, 1200);
 
     } catch (err) {
@@ -1182,6 +1248,7 @@ async function cadastrarParceiro(event) {
     const nome = document.getElementById('cad-nome').value.trim().toUpperCase();
     const cpf = document.getElementById('cad-cpf').value.trim();
     const telefone = document.getElementById('cad-telefone').value.trim();
+    const email = document.getElementById('cad-email')?.value.trim() || '';
     const btnSalvar = document.getElementById('btn-salvar');
     const sucessoDiv = document.getElementById('cadastro-sucesso');
     const erroDiv = document.getElementById('cadastro-erro');
@@ -1217,6 +1284,7 @@ async function cadastrarParceiro(event) {
                 cpf: cpf,
                 nome_razao_social: nome,
                 telefone: telefone,
+                email: email || null,
                 termo_aceito: false,
                 termo_aceito_foco: false,
                 enviado_piiq: false
@@ -1234,7 +1302,7 @@ async function cadastrarParceiro(event) {
         }
 
         // Sucesso
-        document.getElementById('cadastro-sucesso-msg').textContent = `Parceiro "${nome}" cadastrado com sucesso!`;
+        document.getElementById('cadastro-sucesso-msg').textContent = `Cliente "${nome}" cadastrado com sucesso!`;
         sucessoDiv.style.display = 'flex';
         document.getElementById('form-cadastro').reset();
 
@@ -1618,11 +1686,15 @@ const _CACHE_ROLE_DETALHE = 'sbr_navbar_role';
  * Assim os botões Editar e Enviar Termo aparecem logo no primeiro paint, sem esperar verificarAutenticacao.
  */
 function aplicarPermissoesDetalheComCache() {
-    if (!document.getElementById('parceiro-nome')) return;
     const role = sessionStorage.getItem(_CACHE_ROLE_DETALHE);
     if (role !== 'admin' && role !== 'operador') return;
+
+    // Cada botão só existe na sua página; o seletor já resolve
     const btnEditar = document.querySelector('.btn-editar-parceiro');
     if (btnEditar) btnEditar.style.display = '';
+
+    const btnNovo = document.querySelector('.btn-novo-cliente');
+    if (btnNovo) btnNovo.style.display = '';
 }
 
 // ===== Inicialização =====
@@ -1662,6 +1734,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Perfil só ficou disponível após o auth: reaplica o que depende dele
         aplicarPermissoesDetalhe();
+        aplicarPermissoesLista();
         preencherConsultorDetalhe();
 
         // Filtros automáticos da tabela principal

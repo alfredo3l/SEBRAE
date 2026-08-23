@@ -628,13 +628,15 @@ async function salvarContatoDoFormulario() {
                 if (telefone) campos.Phone = telefone;
                 if (email) campos.Email = email;
                 await atualizarContatoSebrae(contactId, campos);
-                msg = 'Contato atualizado no cadastro e sincronizado no FOCO.';
+                msg = 'Contato do cliente atualizado no cadastro e no FOCO.';
             } catch (err) {
                 console.error('Erro ao sincronizar contato no FOCO:', err);
-                msg = 'Contato salvo no cadastro. <b>Aviso:</b> não foi possível sincronizar no FOCO (' + (err.message || 'erro desconhecido') + ').';
+                msg = 'Contato salvo no cadastro. <b>Atenção:</b> não foi possível atualizar no FOCO ('
+                    + (err.message || 'erro desconhecido') + ').';
             }
         } else {
-            msg = 'Contato salvo no cadastro. <b>Aviso:</b> Contact Id do FOCO não encontrado — sem sincronização no Salesforce.';
+            msg = 'Contato salvo no cadastro. <b>Atenção:</b> este cliente não foi localizado no FOCO, '
+                + 'então os dados não foram atualizados lá.';
         }
 
         mostrar('documento-aviso-sucesso', msg);
@@ -947,6 +949,7 @@ async function inicializarPaginaDocumento() {
             .single();
 
         if (error || !data) {
+            if (tratarErroDeSessao(error)) return; // sessão expirada: vai para o login
             if (tituloEl) tituloEl.textContent = 'Cliente não encontrado';
             container.innerHTML = '<p>Não foi possível carregar os dados do cliente.</p>';
             return;

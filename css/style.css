@@ -2248,17 +2248,6 @@ body {
     color: #2c3e50;
 }
 
-.badge-pdf {
-    display: inline-block;
-    background: #e7f1ff;
-    color: #0b5ed7;
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 12px;
-    margin-left: 4px;
-}
-
 /* Timeline de evidências */
 .timeline {
     list-style: none;
@@ -2470,4 +2459,68 @@ body {
     border-radius: 12px;
     margin-left: 4px;
     white-space: nowrap;
+}
+
+/* === Botão "Novo Cliente" (cadastro temporário — período de testes) === */
+.btn-novo-cliente {
+    background-color: #28a745;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.btn-novo-cliente:hover {
+    background-color: #218838;
+    color: #fff;
+}
+
+/* Aviso no rodapé do cadastro: deixa explícito que é só para os testes */
+.aviso-cadastro-teste {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-left: 4px solid #f5a623;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 4px 0 18px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #6b5200;
+}
+
+.aviso-cadastro-teste i {
+    color: #f5a623;
+    font-size: 1rem;
+    margin-top: 1px;
+}
+
+/* Acompanhamento sem nenhum documento gerado */
+.acomp-vazio {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 28px 16px;
+    color: #6c757d;
+}
+
+.acomp-vazio i {
+    font-size: 1.8rem;
+    color: #adb5bd;
+    margin-bottom: 10px;
+    display: block;
+}
+
+.acomp-vazio p {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
 }

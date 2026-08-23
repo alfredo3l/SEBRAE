@@ -29,17 +29,21 @@ function montarDocsAcompanhamento(p) {
 
     // Linha do LGPD: status vem das flags de parceiros (fonte viva), mas
     // herda id/consultor/arquivo do registro em documentos, quando existir.
-    const lgpd = linhaLGPDDoParceiro(p).doc;
+    // Só entra se o termo existe de fato — cliente novo não tem termo algum.
     const registroLGPD = (p.documentos || [])
         .filter(d => d.tipo_documento === 'termo-lgpd')
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    if (registroLGPD) {
-        lgpd.id = registroLGPD.id;
-        lgpd.consultor = registroLGPD.consultor;
-        lgpd.created_at = registroLGPD.created_at;
-        lgpd.arquivo_path = lgpd.arquivo_path || registroLGPD.arquivo_path;
+
+    if (registroLGPD || temHistoricoLGPD(p)) {
+        const lgpd = linhaLGPDDoParceiro(p).doc;
+        if (registroLGPD) {
+            lgpd.id = registroLGPD.id;
+            lgpd.consultor = registroLGPD.consultor;
+            lgpd.created_at = registroLGPD.created_at;
+            lgpd.arquivo_path = lgpd.arquivo_path || registroLGPD.arquivo_path;
+        }
+        docs.push(lgpd);
     }
-    docs.push(lgpd);
     return docs;
 }
 
@@ -97,6 +101,21 @@ function renderCardsAcompanhamento() {
     const grid = document.getElementById('acomp-docs');
     if (!grid) return;
 
+    // Cliente ainda sem nenhum documento gerado
+    if (!_acompDocs.length) {
+        grid.innerHTML = `
+            <div class="acomp-vazio">
+                <i class="fas fa-file-circle-plus"></i>
+                <p>Nenhum documento gerado para este cliente.</p>
+                <p class="acomp-muted">Use "Enviar novo documento" para escolher o termo a ser preenchido.</p>
+            </div>`;
+        const tl = document.getElementById('acomp-timeline');
+        if (tl) tl.innerHTML = '<li class="pending"><b>Nenhuma evidência registrada</b><span>As evidências aparecem aqui depois que o primeiro documento for gerado.</span></li>';
+        const nomeEl = document.getElementById('acomp-evidencia-doc');
+        if (nomeEl) nomeEl.textContent = '—';
+        return;
+    }
+
     grid.innerHTML = _acompDocs.map((doc, idx) => {
         const badge = BADGES_STATUS_DOC[doc.status] || BADGES_STATUS_DOC.nao_aceito;
         const classeCard = {
@@ -105,7 +124,6 @@ function renderCardsAcompanhamento() {
             recusado: 'st-card-recusado'
         }[doc.status] || '';
         const selecionado = idx === _acompSelecionado ? ' st-card-selecionado' : '';
-        const pdfBadge = (doc.status === 'aceito') ? ' <span class="badge-pdf">PDF final</span>' : '';
         const dataRecusaLinha = doc.status === 'recusado'
             ? `<div class="st-line"><span class="acomp-muted">Recusado</span><b>${dataCurta(doc.data_recusa || _acompParceiro.data_recusa)}</b></div>`
             : `<div class="st-line"><span class="acomp-muted">Aceito</span><b>${dataCurta(doc.data_aceite)}</b></div>`;
@@ -118,7 +136,7 @@ function renderCardsAcompanhamento() {
         return `
         <div class="st-card ${classeCard}${selecionado}" onclick="selecionarDocAcompanhamento(${idx})">
             <h5>${escAcomp(doc.nome_documento)}</h5>
-            <span class="${badge.classe}"><i class="fas fa-${badge.icone}"></i> ${badge.rotulo}</span>${pdfBadge}${codigoBadge}
+            <span class="${badge.classe}"><i class="fas fa-${badge.icone}"></i> ${badge.rotulo}</span>${codigoBadge}
             <div class="st-line"><span class="acomp-muted">Enviado</span><b>${dataCurta(doc.data_envio)}</b></div>
             ${dataRecusaLinha}
             <div class="st-line"><span class="acomp-muted">FOCO</span>${focoDoDocumento(doc)}</div>
@@ -242,15 +260,27 @@ async function recarregarAcompanhamentoAoVivo() {
     if (error || !parceiro) return;
 
     _acompParceiro = parceiro;
+    parceiroAtual = parceiro;   // usado pelo modal "Editar Cliente" (app.js)
     _acompDocs = montarDocsAcompanhamento(parceiro);
 
     // Mantém o documento que estava aberto, se ele ainda existir
     const novoIndice = _acompDocs.findIndex(d => chaveDoc(d) === docSelecionado);
     _acompSelecionado = novoIndice >= 0 ? novoIndice : 0;
 
+    pintarCabecalhoAcompanhamento();
     renderCardsAcompanhamento();
     renderTimelineAcompanhamento();
     renderRecusaAcompanhamento();
+}
+
+/** Cabeçalho do cliente (nome, CPF, telefone) — repintado após editar o cliente */
+function pintarCabecalhoAcompanhamento() {
+    if (!_acompParceiro) return;
+    document.getElementById('acomp-nome').textContent = _acompParceiro.nome_razao_social;
+    document.getElementById('acomp-cpf').textContent = _acompParceiro.cpf;
+    document.getElementById('acomp-telefone').textContent = _acompParceiro.telefone || '—';
+    document.getElementById('btn-novo-documento').href =
+        `detalhe?id=${encodeURIComponent(_acompParceiro.id)}`;
 }
 
 /** Inicialização da página */
@@ -271,21 +301,18 @@ async function inicializarAcompanhamento() {
         .single();
 
     if (error || !parceiro) {
+        if (tratarErroDeSessao(error)) return;
         console.error('Erro ao carregar atendimento:', error?.message);
         document.getElementById('acomp-nome').textContent = 'Erro ao carregar o atendimento';
         return;
     }
 
     _acompParceiro = parceiro;
+    parceiroAtual = parceiro;   // usado pelo modal "Editar Cliente" (app.js)
     _acompDocs = montarDocsAcompanhamento(parceiro);
     _acompSelecionado = 0;
 
-    // Cabeçalho do cliente
-    document.getElementById('acomp-nome').textContent = parceiro.nome_razao_social;
-    document.getElementById('acomp-cpf').textContent = parceiro.cpf;
-    document.getElementById('acomp-telefone').textContent = parceiro.telefone || '—';
-    document.getElementById('btn-novo-documento').href = `detalhe?id=${encodeURIComponent(parceiro.id)}`;
-
+    pintarCabecalhoAcompanhamento();
     renderCardsAcompanhamento();
     renderTimelineAcompanhamento();
     renderRecusaAcompanhamento();

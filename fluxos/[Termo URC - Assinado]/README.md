@@ -136,3 +136,42 @@ Na primeira versão, `Busca Pendentes` recebia duas conexões no mesmo input
 (`Webhook → Busca Pendentes` **e** `Webhook → insntancia → Busca Pendentes`), o que no n8n
 **multiplica os itens** e faria o fluxo responder duas vezes ao cliente — o mesmo defeito que
 duplicava as mensagens no fluxo de envio (herdado da topologia do fluxo LGPD original).
+
+## Guarda da integração no FOCO (23/08/2026)
+
+Descoberta em teste com cliente cadastrado só no sistema (não existente no FOCO): a tela mostrava
+**"FOCO Integrado ✓"** para um documento que **não foi anexado a lugar nenhum**.
+
+O que acontecia (execução real 41027):
+
+1. `Upload Anexo FOCO` criava o `ContentVersion` — **sucesso**;
+2. `Vincula Anexo Interacao` recebia **400 `REQUIRED_FIELD_MISSING: [LinkedEntityId]`**, porque o
+   cliente não tem Case nem Account no FOCO;
+3. como todos os nós têm `onError: continueRegularOutput` (correto — falha no FOCO não pode
+   impedir o aceite do cliente), o fluxo seguia e `Marca FOCO Integrado` gravava
+   `salvo_foco = true` **sem olhar se o vínculo deu certo**.
+
+O PDF ficava solto na biblioteca do usuário da integração: o único `ContentDocumentLink` era com
+`005V200000JysXGIAZ` (prefixo `005` = **User**, `rpa@ms.sebrae.com.br`), que é o vínculo automático
+criado pelo Salesforce para quem sobe o arquivo — não um vínculo com o cliente.
+
+**Correção — dois nós IF na cadeia da integração:**
+
+```
+seta_token → [Tem vinculo FOCO?] ──não──→ E LGPD?          (não sobe nada, não marca)
+                    │sim
+                    ↓
+       Upload Anexo FOCO → Busca ContentDocumentId → Vincula Anexo Interacao
+                    ↓
+            [Vinculou no FOCO?] ──não──→ E LGPD?           (não marca)
+                    │sim
+                    ↓
+            Marca FOCO Integrado → E LGPD?
+```
+
+- **`Tem vinculo FOCO?`** — `{{ $('Identifica Documento').first().json.case_id_salesforce || ...id_salesforce || "" }}`
+  não vazio. Sem Case e sem Account, nem faz o upload: evita acumular arquivos órfãos no FOCO.
+- **`Vinculou no FOCO?`** — `{{ $json.success === true && !$json.error }}`, lendo a resposta do POST
+  de `ContentDocumentLink`. Só aí `salvo_foco` vira `true`.
+
+Assim a coluna FOCO da lista passa a significar o que promete: documento anexado ao atendimento.

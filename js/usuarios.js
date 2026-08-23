@@ -45,6 +45,7 @@ async function carregarUsuarios() {
         renderizarTabela();
 
     } catch (err) {
+        if (tratarErroDeSessao(err)) return; // sessão expirada: vai para o login
         console.error('Erro ao carregar usuários:', err);
         tbody.innerHTML = `
             <tr>

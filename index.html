@@ -63,6 +63,12 @@
                     <i class="fas fa-search"></i>
                     Buscar Cliente
                 </button>
+                <!-- Cadastro temporário: existe apenas durante os testes; o cadastro
+                     oficial de clientes é feito no FOCO (aviso no rodapé do modal). -->
+                <button class="btn-novo-cliente" onclick="abrirModalCadastro()" style="display:none;">
+                    <i class="fas fa-user-plus"></i>
+                    Novo Cliente
+                </button>
                 <a href="/" class="btn-inicio">
                     <i class="fas fa-home"></i>
                     Início
@@ -152,7 +158,7 @@
             <div class="modal-cadastro-header">
                 <h3>
                     <i class="fas fa-user-plus"></i>
-                    Cadastrar Novo Parceiro
+                    Novo Cliente
                 </h3>
                 <button class="modal-close-btn" onclick="fecharModalCadastro()">
                     <i class="fas fa-times"></i>
@@ -200,21 +206,45 @@
                         <label for="cad-telefone">
                             <i class="fas fa-phone"></i> Telefone <span class="required">*</span>
                         </label>
-                        <input 
-                            type="text" 
-                            id="cad-telefone" 
+                        <input
+                            type="text"
+                            id="cad-telefone"
                             placeholder="(00)00000-0000"
                             required
                             maxlength="15"
                             oninput="mascaraTelefone(this)"
                         >
                     </div>
+                    <div class="modal-form-group">
+                        <label for="cad-email">
+                            <i class="fas fa-envelope"></i> E-mail
+                        </label>
+                        <input
+                            type="email"
+                            id="cad-email"
+                            placeholder="email@exemplo.com"
+                            maxlength="150"
+                        >
+                    </div>
+
+                    <!-- Aviso obrigatório: cadastro provisório, só para os testes -->
+                    <div class="aviso-cadastro-teste">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <div>
+                            <strong>Cadastro apenas para testes.</strong>
+                            Esta tela é temporária e existe somente para permitir os testes de envio
+                            dos termos. O cadastramento de clientes deve ser feito
+                            <strong>exclusivamente pela plataforma FOCO</strong>; clientes criados aqui
+                            não são enviados ao FOCO e não substituem o cadastro oficial.
+                        </div>
+                    </div>
+
                     <div class="modal-form-actions">
                         <button type="button" class="btn-cancelar" onclick="fecharModalCadastro()">
                             <i class="fas fa-times"></i> Cancelar
                         </button>
                         <button type="submit" class="btn-salvar" id="btn-salvar">
-                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                            <span class="btn-text"><i class="fas fa-save"></i> Cadastrar</span>
                             <span class="spinner" style="display:none;"></span>
                         </button>
                     </div>

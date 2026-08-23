@@ -59,6 +59,10 @@
                 <span>Acompanhamento do Atendimento</span>
             </h2>
             <div class="detail-actions">
+                <button class="btn-editar-parceiro" onclick="abrirModalEdicao()" style="display:none;">
+                    <i class="fas fa-edit"></i>
+                    Editar Cliente
+                </button>
                 <a href="/" class="btn-inicio">
                     <i class="fas fa-home"></i>
                     Início
@@ -185,6 +189,98 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL EDITAR CLIENTE ========== -->
+    <!-- Mesmos ids do modal do detalhe: reaproveita abrirModalEdicao/salvarEdicao
+         de js/app.js. A exclusão continua sendo feita pela tela de detalhe. -->
+    <div class="modal-overlay" id="modal-edicao" style="display: none;">
+        <div class="modal-cadastro-card">
+            <div class="modal-cadastro-header">
+                <h3>
+                    <i class="fas fa-edit"></i>
+                    Editar Cliente
+                </h3>
+                <button class="modal-close-btn" onclick="fecharModalEdicao()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <!-- Mensagem de Sucesso -->
+                <div class="cadastro-sucesso" id="edicao-sucesso" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="edicao-sucesso-msg">Cliente atualizado no cadastro e no FOCO.</span>
+                </div>
+                <!-- Mensagem de Erro -->
+                <div class="cadastro-erro" id="edicao-erro" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="edicao-erro-msg">Erro ao atualizar cliente.</span>
+                </div>
+
+                <form id="form-edicao" onsubmit="salvarEdicao(event)">
+                    <input type="hidden" id="edit-id">
+                    <div class="modal-form-group">
+                        <label for="edit-nome">
+                            <i class="fas fa-user"></i> Nome / Razão Social
+                        </label>
+                        <input
+                            type="text"
+                            id="edit-nome"
+                            maxlength="200"
+                            readonly
+                            tabindex="-1"
+                            style="background:#f0f2f5; color:#6c757d; cursor:not-allowed; pointer-events:none; user-select:none;"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-cpf">
+                            <i class="fas fa-id-card"></i> CPF
+                        </label>
+                        <input
+                            type="text"
+                            id="edit-cpf"
+                            maxlength="14"
+                            readonly
+                            tabindex="-1"
+                            style="background:#f0f2f5; color:#6c757d; cursor:not-allowed; pointer-events:none; user-select:none;"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-telefone">
+                            <i class="fas fa-phone"></i> Telefone <span class="required">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="edit-telefone"
+                            placeholder="(00)00000-0000"
+                            required
+                            maxlength="15"
+                            oninput="mascaraTelefone(this)"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-email">
+                            <i class="fas fa-envelope"></i> E-mail
+                        </label>
+                        <input
+                            type="email"
+                            id="edit-email"
+                            placeholder="email@exemplo.com"
+                            maxlength="150"
+                        >
+                    </div>
+                    <div class="modal-form-actions">
+                        <button type="button" class="btn-cancelar" onclick="fecharModalEdicao()">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn-salvar" id="btn-salvar-edicao">
+                            <span class="btn-text"><i class="fas fa-save"></i> Salvar</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

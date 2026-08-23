@@ -300,12 +300,34 @@
     <script src="js/supabase-config.js"></script>
 
     <script>
+        // Página para onde voltar depois de entrar (definida por auth.js ao
+        // expirar a sessão); só aceita caminho interno, nunca URL externa.
+        const _destinoLogin = (function () {
+            const alvo = new URLSearchParams(window.location.search).get('redirect') || '';
+            return /^\/[^/]/.test(alvo) || /^[a-z][a-z0-9-]*(\?|$)/i.test(alvo) ? alvo : '/';
+        })();
+
         // Verifica se já está logado
         (async function() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
-                window.location.href = '/';
+                window.location.href = _destinoLogin;
             }
+        })();
+
+        // Avisa por que o usuário voltou para cá (sessão expirada / conta inativa)
+        (function () {
+            const motivo = new URLSearchParams(window.location.search).get('motivo');
+            if (!motivo) return;
+
+            const div = document.getElementById('login-error');
+            const msg = document.getElementById('login-error-msg');
+            if (!div || !msg) return;
+
+            msg.textContent = motivo === 'inativo'
+                ? 'Seu acesso está inativo. Procure um administrador do sistema.'
+                : 'Sua sessão expirou. Entre novamente para continuar.';
+            div.classList.add('show');
         })();
 
         // Toggle mostrar/ocultar senha
@@ -349,8 +371,8 @@
                     throw error;
                 }
 
-                // Login com sucesso - redireciona
-                window.location.href = '/';
+                // Login com sucesso - volta para onde o usuário estava
+                window.location.href = _destinoLogin;
 
             } catch (error) {
                 // Mostra mensagem de erro
