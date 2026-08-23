@@ -86,6 +86,7 @@ async function abrirTermoPDF(cpf) {
 }
 
 // ===== Estado da paginação da tabela principal =====
+// Cada item de dadosParceiros/dadosFiltrados é uma LINHA DE DOCUMENTO: { parceiro, doc }
 let dadosParceiros = [];
 let dadosFiltrados = [];
 let paginaParceiros = 1;
@@ -94,11 +95,143 @@ let registrosPorPagina = 10;
 // ===== Funções de Acesso ao Banco (Supabase) =====
 
 /**
- * Busca todos os parceiros do banco de dados
+ * Deriva a linha "Termo LGPD" de um parceiro a partir das flags legadas.
+ * O fluxo n8n do LGPD ainda grava em parceiros (por CPF), então essa é a
+ * fonte viva do status do LGPD — mesmo existindo registro em documentos.
+ */
+function linhaLGPDDoParceiro(p) {
+    let status;
+    if (p.termo_aceito) status = 'aceito';
+    else if (p.recusado) status = 'recusado';
+    else if (p.data_envio) status = 'enviado';
+    else status = 'nao_aceito';
+
+    return {
+        parceiro: p,
+        doc: {
+            tipo_documento: 'termo-lgpd',
+            nome_documento: 'Termo LGPD',
+            status,
+            salvo_foco: !!p.termo_aceito_foco,
+            arquivo_path: null,          // PDF do LGPD é resolvido pelo CPF (legado)
+            data_envio: p.data_envio,
+            data_aceite: p.data_aceite,
+            _lgpdDerivado: true
+        }
+    };
+}
+
+/**
+ * Achata parceiros + documentos em linhas de documento (Tela 1 da POC):
+ * 1 linha LGPD por parceiro (derivada das flags) + 1 linha por registro
+ * de documentos com tipo != termo-lgpd.
+ */
+function montarLinhasDocumentos(parceiros) {
+    const linhas = [];
+    (parceiros || []).forEach(p => {
+        linhas.push(linhaLGPDDoParceiro(p));
+        (p.documentos || [])
+            .filter(d => d.tipo_documento !== 'termo-lgpd')
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .forEach(d => linhas.push({ parceiro: p, doc: d }));
+    });
+    return linhas;
+}
+
+// ===== Atualização em tempo real =====
+// O aceite/recusa chega pelo WhatsApp e é gravado pelo n8n: sem isto, a tela
+// só mostraria a mudança depois de um F5.
+
+let _canalRealtime = null;
+let _recarregaAgendada = null;
+
+/**
+ * Reage a mudanças no banco com um pequeno atraso, agrupando eventos em
+ * sequência (o aceite grava em documentos e parceiros quase ao mesmo tempo).
+ */
+function agendarAtualizacao(recarregar) {
+    clearTimeout(_recarregaAgendada);
+    _recarregaAgendada = setTimeout(recarregar, 400);
+}
+
+/**
+ * Escuta alterações em `documentos` e `parceiros` e chama `recarregar()`.
+ * Retorna o canal (ou null se o Realtime não estiver disponível).
+ *
+ * O token da sessão precisa chegar ao websocket ANTES da assinatura: as
+ * políticas de leitura exigem usuário autenticado e, sem o token aplicado,
+ * o servidor descarta os eventos sem avisar (o canal fica "SUBSCRIBED" mudo).
+ */
+async function ligarAtualizacaoAoVivo(nomeCanal, recarregar) {
+    try {
+        const { data } = await supabaseClient.auth.getSession();
+        const token = data?.session?.access_token;
+        if (!token) return null; // sem sessão não há o que escutar
+
+        await supabaseClient.realtime.setAuth(token);
+
+        // A sessão é renovada de tempos em tempos; o websocket precisa saber.
+        supabaseClient.auth.onAuthStateChange((evento, sessao) => {
+            if (evento === 'TOKEN_REFRESHED' && sessao?.access_token) {
+                supabaseClient.realtime.setAuth(sessao.access_token);
+            }
+        });
+
+        if (_canalRealtime) supabaseClient.removeChannel(_canalRealtime);
+
+        _canalRealtime = supabaseClient
+            .channel(nomeCanal)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'documentos' },
+                () => agendarAtualizacao(recarregar))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'parceiros' },
+                () => agendarAtualizacao(recarregar))
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') console.log('Atualização ao vivo ativa.');
+                else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn('Atualização ao vivo indisponível:', status);
+                }
+            });
+
+        return _canalRealtime;
+    } catch (e) {
+        console.warn('Realtime indisponível:', e?.message || e);
+        return null;
+    }
+}
+
+/**
+ * Rede de segurança: ao voltar para a aba, revalida os dados mesmo que o
+ * websocket tenha caído enquanto a janela estava em segundo plano.
+ */
+function atualizarAoVoltarParaAba(recarregar) {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') agendarAtualizacao(recarregar);
+    });
+}
+
+/**
+ * Preenche o dropdown "Tipo de Documento" a partir do catálogo TERMOS_URC
+ * (js/documentos.js, carregado após este arquivo).
+ */
+function popularFiltroTipoDocumento() {
+    const select = document.getElementById('filtro-tipo');
+    if (!select || select.options.length > 1 || typeof TERMOS_URC === 'undefined') return;
+    Object.keys(TERMOS_URC).forEach(slug => {
+        const opt = document.createElement('option');
+        opt.value = slug;
+        opt.textContent = TERMOS_URC[slug].titulo;
+        select.appendChild(opt);
+    });
+}
+
+/**
+ * Busca todos os parceiros com seus documentos e monta as linhas da lista
  */
 async function carregarParceiros() {
     const tbody = document.getElementById('tbody-parceiros');
     if (!tbody) return;
+
+    popularFiltroTipoDocumento();
 
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
     document.getElementById('pagination-status')?.innerText && (document.getElementById('pagination-status').textContent = '');
@@ -106,7 +239,7 @@ async function carregarParceiros() {
 
     const { data, error } = await supabaseClient
         .from('parceiros')
-        .select('*')
+        .select('*, documentos(*)')
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -115,9 +248,37 @@ async function carregarParceiros() {
         return;
     }
 
-    dadosParceiros = data || [];
+    dadosParceiros = montarLinhasDocumentos(data);
     dadosFiltrados = dadosParceiros;
     paginaParceiros = 1;
+    renderizarTabelaParceiros();
+}
+
+/**
+ * Recarrega a lista sem piscar "Carregando...", preservando os filtros e a
+ * página em que o usuário está. Usada pela atualização ao vivo.
+ */
+async function recarregarListaAoVivo() {
+    if (!document.getElementById('tbody-parceiros')) return;
+
+    const paginaAtual = paginaParceiros;
+
+    const { data, error } = await supabaseClient
+        .from('parceiros')
+        .select('*, documentos(*)')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.warn('Atualização ao vivo falhou:', error.message);
+        return;
+    }
+
+    dadosParceiros = montarLinhasDocumentos(data);
+    aplicarFiltrosParceiros(); // mantém os filtros escolhidos pelo usuário
+
+    // Volta para a página em que o usuário estava, se ela ainda existir
+    const totalPaginas = Math.max(1, Math.ceil(dadosFiltrados.length / registrosPorPagina));
+    paginaParceiros = Math.min(paginaAtual, totalPaginas);
     renderizarTabelaParceiros();
 }
 
@@ -141,27 +302,33 @@ function renderizarTabelaParceiros() {
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
     } else {
         // Renderiza todas as linhas de forma síncrona de uma só vez
-        paginados.forEach(p => tbody.appendChild(criarLinhaParceiro(p)));
+        paginados.forEach((linha, idx) => tbody.appendChild(criarLinhaDocumento(linha, idx)));
 
-        // Verifica PDFs em paralelo e injeta botão nas linhas correspondentes
-        paginados
-            .filter(p => p.termo_aceito)
-            .forEach(p => {
+        // Verifica PDFs em paralelo e injeta botão na célula de status
+        paginados.forEach((linha, idx) => {
+            const { parceiro: p, doc } = linha;
+            const injetarBotao = (onclick) => {
+                const tr = tbody.querySelector(`tr[data-row="${idx}"]`);
+                const statusCell = tr?.querySelector('.cell-status');
+                if (!statusCell) return;
+                const btn = document.createElement('button');
+                btn.className = 'btn-termo-pdf';
+                btn.title = 'Ver Termo PDF';
+                btn.innerHTML = '<i class="fas fa-file-pdf"></i>';
+                btn.onclick = (e) => { e.stopPropagation(); onclick(); };
+                statusCell.appendChild(btn);
+            };
+
+            if (doc._lgpdDerivado && doc.status === 'aceito') {
+                // LGPD legado: PDF resolvido pelo CPF no bucket
                 verificarTermoPDF(p.cpf).then(temPDF => {
-                    if (!temPDF) return;
-                    const tr = tbody.querySelector(`tr[data-id="${p.id}"]`);
-                    if (!tr) return;
-                    const termoCell = tr.cells[4];
-                    if (termoCell) {
-                        const btn = document.createElement('button');
-                        btn.className = 'btn-termo-pdf';
-                        btn.title = 'Ver Termo PDF';
-                        btn.innerHTML = '<i class="fas fa-file-pdf"></i>';
-                        btn.onclick = (e) => { e.stopPropagation(); abrirTermoPDF(p.cpf); };
-                        termoCell.appendChild(btn);
-                    }
+                    if (temPDF) injetarBotao(() => abrirTermoPDF(p.cpf));
                 });
-            });
+            } else if (doc.arquivo_path && doc.status === 'aceito') {
+                // Demais termos: caminho gravado em documentos
+                injetarBotao(() => abrirPDFPorPath(doc.arquivo_path));
+            }
+        });
     }
 
     // Status de registros
@@ -224,50 +391,60 @@ function alterarRegistrosPorPagina(valor) {
     renderizarTabelaParceiros();
 }
 
+// Mapeamento status → badge (Tela 1 da POC)
+const BADGES_STATUS_DOC = {
+    gerado:     { classe: 'badge-pendente', icone: 'file-lines',    rotulo: 'Gerado' },
+    enviado:    { classe: 'badge-assinado', icone: 'paper-plane',   rotulo: 'Enviado' },
+    aceito:     { classe: 'badge-sim',      icone: 'check-circle',  rotulo: 'Aceito' },
+    recusado:   { classe: 'badge-recusado', icone: 'ban',           rotulo: 'Recusado' },
+    // Cliente ainda sem documento enviado (linha derivada do Termo LGPD)
+    nao_aceito: { classe: 'badge-pendente', icone: 'clock',         rotulo: 'Pendente' }
+};
+
 /**
- * Cria uma linha da tabela para um parceiro (síncrono — sem aguardar PDF)
+ * Abre um PDF do bucket TermosAceite pelo caminho gravado em documentos
  */
-function criarLinhaParceiro(p) {
+async function abrirPDFPorPath(path) {
+    const { data, error } = await supabaseClient
+        .storage
+        .from('TermosAceite')
+        .createSignedUrl(path, 3600);
+
+    if (error || !data?.signedUrl) {
+        alert('Documento não encontrado ou erro ao gerar link.');
+        return;
+    }
+    window.open(data.signedUrl, '_blank');
+}
+
+/**
+ * Cria uma linha da tabela para um documento de um parceiro (Tela 1 da POC).
+ * linha = { parceiro, doc }; idx = posição na página (para injeção do PDF).
+ */
+function criarLinhaDocumento(linha, idx) {
+    const { parceiro: p, doc } = linha;
     const tr = document.createElement('tr');
     tr.className = 'clickable-row';
     tr.dataset.id = p.id;
-    tr.onclick = function () { window.location = 'detalhe?id=' + p.id; };
+    tr.dataset.row = idx;
+    // Tela 1 → Tela 6 da POC: linha/olho abrem o Acompanhamento do Atendimento
+    tr.onclick = function () { window.location = 'acompanhamento?id=' + p.id; };
 
-    // Termo Aceito — renderiza badge imediatamente; botão PDF é adicionado depois em paralelo
-    let termoBadge = '';
-    if (p.termo_aceito) {
-        if (p.termo_aceito_foco) {
-            termoBadge = ''
-                + '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>'
-                + ' <span class="badge-foco" style="margin-left:6px; padding:2px 6px; border-radius:10px; background:#004085; color:#fff; font-size:10px; font-weight:600;">FOCO</span>';
-        } else {
-            termoBadge = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
-        }
-    } else if (p.recusado) {
-        termoBadge = '<span class="badge-recusado"><i class="fas fa-ban"></i> Recusado</span>';
-    } else {
-        termoBadge = '<span class="badge-nao"><i class="fas fa-times-circle"></i> Não</span>';
-    }
+    const badge = BADGES_STATUS_DOC[doc.status] || BADGES_STATUS_DOC.nao_aceito;
+    const statusBadge = `<span class="${badge.classe}"><i class="fas fa-${badge.icone}"></i> ${badge.rotulo}</span>`;
 
-    // Data Envio
-    const dataEnvio = formatarDataHora(p.data_envio);
+    const focoBadge = doc.salvo_foco
+        ? '<span class="badge-foco">FOCO ✓</span>'
+        : '<span class="badge-dash">—</span>';
 
-    // Data Aceite
-    const dataAceite = formatarDataHora(p.data_aceite);
+    const dataEnvio = formatarDataHora(doc.data_envio);
+    const dataAceite = formatarDataHora(doc.data_aceite);
 
-    // Data Recusa
-    const dataRecusa = formatarDataHora(p.data_recusa);
-
-    // Data Alteração (updated_at)
-    const dataAlteracao = formatarDataHora(p.updated_at);
-
-    // Ações
     const acoes = `
-        <button class="btn-action btn-action-view" title="Visualizar" onclick="event.stopPropagation(); window.location='detalhe?id=${p.id}'">
+        <button class="btn-action btn-action-view" title="Acompanhamento do atendimento" onclick="event.stopPropagation(); window.location='acompanhamento?id=${p.id}'">
             <i class="fas fa-eye"></i>
         </button>`;
 
-    // Account ID do Salesforce
     const accountId = p.id_salesforce || '-';
 
     tr.innerHTML = `
@@ -275,11 +452,11 @@ function criarLinhaParceiro(p) {
         <td>${p.nome_razao_social}</td>
         <td>${p.telefone}</td>
         <td title="${p.id_salesforce || ''}">${accountId}</td>
-        <td>${termoBadge}</td>
+        <td class="cell-documento" title="${doc.nome_documento || ''}">${doc.nome_documento || '-'}</td>
+        <td class="cell-status">${statusBadge}</td>
         <td>${dataEnvio}</td>
         <td>${dataAceite}</td>
-        <td>${dataRecusa}</td>
-        <td>${dataAlteracao}</td>
+        <td>${focoBadge}</td>
         <td>${acoes}</td>
     `;
 
@@ -289,53 +466,36 @@ function criarLinhaParceiro(p) {
 // ===== Funções da Lista de Parceiros =====
 
 /**
- * Filtra os parceiros na tabela com base nos filtros selecionados
+ * Filtra as linhas de documento da lista (100% client-side sobre os dados
+ * já carregados por carregarParceiros()).
  */
-async function filtrarParceiros() {
-    const pesquisa = document.getElementById('filtro-pesquisa')?.value.trim().toLowerCase() || '';
-    const status = document.getElementById('filtro-status')?.value || '';
-    const telefone = document.getElementById('filtro-telefone')?.value || '';
-
-    let query = supabaseClient
-        .from('parceiros')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    // Filtro de status do termo
-    if (status === 'aceito') {
-        query = query.eq('termo_aceito', true);
-    } else if (status === 'recusado') {
-        query = query.eq('termo_aceito', false).eq('recusado', true);
-    } else if (status === 'nao_aceito') {
-        query = query.eq('termo_aceito', false);
-    }
-
-    // Filtro de telefone
-    if (telefone === 'sem') {
-        query = query.or('telefone.is.null,telefone.eq.');
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-        console.error('Erro ao filtrar:', error.message);
-        return;
-    }
-
-    // Filtro de pesquisa textual (client-side para flexibilidade)
-    let resultados = data || [];
-    if (pesquisa) {
-        resultados = resultados.filter(p =>
-            (p.cpf || '').toLowerCase().includes(pesquisa) ||
-            (p.nome_razao_social || '').toLowerCase().includes(pesquisa) ||
-            (p.telefone || '').toLowerCase().includes(pesquisa) ||
-            (p.id || '').toLowerCase().includes(pesquisa)
-        );
-    }
-
-    dadosFiltrados = resultados;
+function filtrarParceiros() {
+    aplicarFiltrosParceiros();
     paginaParceiros = 1;
     renderizarTabelaParceiros();
+}
+
+/**
+ * Recalcula `dadosFiltrados` a partir dos filtros da tela, sem mexer na
+ * paginação nem renderizar — quem chama decide o que fazer depois.
+ */
+function aplicarFiltrosParceiros() {
+    const pesquisa = document.getElementById('filtro-pesquisa')?.value.trim().toLowerCase() || '';
+    const status = document.getElementById('filtro-status')?.value || '';
+    const tipo = document.getElementById('filtro-tipo')?.value || '';
+
+    dadosFiltrados = dadosParceiros.filter(({ parceiro: p, doc }) => {
+        if (status && doc.status !== status) return false;
+        if (tipo && doc.tipo_documento !== tipo) return false;
+        if (pesquisa) {
+            const alvo = [
+                p.cpf, p.nome_razao_social, p.telefone,
+                p.id_salesforce, doc.nome_documento
+            ].map(v => (v || '').toLowerCase());
+            if (!alvo.some(v => v.includes(pesquisa))) return false;
+        }
+        return true;
+    });
 }
 
 // ===== Controle de Permissões por Role =====
@@ -349,10 +509,36 @@ function aplicarPermissoesDetalhe() {
     if (!usuarioPodeEditar()) return; // visualizador: botões permanecem ocultos
 
     const btnEditar = document.querySelector('.btn-editar-parceiro');
-    const btnEnviar = document.querySelector('.btn-enviar-termo');
-
     if (btnEditar) btnEditar.style.display = '';
-    if (btnEnviar) btnEnviar.style.display = '';
+}
+
+// ===== Cache leve de navegação (sessionStorage, stale-while-revalidate) =====
+// Evita esperar a rede ao voltar para uma tela já visitada: pinta na hora com
+// o valor em cache e revalida no banco em seguida.
+
+const _TTL_CACHE_MS = 5 * 60 * 1000;
+
+function cacheNavGet(chave) {
+    try {
+        const raw = sessionStorage.getItem(chave);
+        if (!raw) return null;
+        const { ts, valor } = JSON.parse(raw);
+        if (Date.now() - ts > _TTL_CACHE_MS) return null;
+        return valor;
+    } catch {
+        return null;
+    }
+}
+
+function cacheNavSet(chave, valor) {
+    try {
+        sessionStorage.setItem(chave, JSON.stringify({ ts: Date.now(), valor }));
+    } catch { /* cota cheia / modo privado: segue sem cache */ }
+}
+
+/** Invalida o cache de um parceiro (após editar/excluir) */
+function invalidarCacheParceiro(id) {
+    try { sessionStorage.removeItem('sbr_parceiro_' + id); } catch {}
 }
 
 // ===== Funções da Página de Detalhe =====
@@ -386,133 +572,26 @@ async function navegarParceiro(direcao) {
     window.location.href = 'detalhe?id=' + ids[novoIndex];
 }
 
+// URL do webhook n8n que envia o termo LGPD via WhatsApp
 /**
- * Abre o modal de confirmação para enviar o termo LGPD
+ * Registra a data de envio do Termo LGPD no cadastro do parceiro.
+ * A lista deriva o status do LGPD das flags de `parceiros`, e o fluxo n8n
+ * de aceite também trabalha nessa tabela — por isso o envio do LGPD
+ * continua carimbando `data_envio` aqui, além da tabela `documentos`.
  */
-function enviarTermo() {
-    if (!usuarioPodeEditar()) {
-        alert('Você não tem permissão para enviar o termo LGPD.');
+async function registrarEnvioLGPDNoParceiro(parceiro) {
+    const agora = new Date().toISOString();
+    const { error } = await supabaseClient
+        .from('parceiros')
+        .update({ data_envio: agora })
+        .eq('id', parceiro.id);
+
+    if (error) {
+        console.error('Erro ao registrar data de envio do LGPD:', error.message);
         return;
     }
-    if (!parceiroAtual) {
-        alert('Erro: dados do parceiro não carregados.');
-        return;
-    }
-
-    // Verifica se o parceiro já aceitou o termo
-    if (parceiroAtual.termo_aceito) {
-        const modal = document.getElementById('modal-enviar-termo');
-        if (!modal) return;
-
-        document.getElementById('envio-sucesso').style.display = 'none';
-        document.getElementById('envio-confirmacao').style.display = 'none';
-
-        const erroDiv = document.getElementById('envio-erro');
-        document.getElementById('envio-erro-msg').textContent = `O parceiro "${parceiroAtual.nome_razao_social}" já possui o termo LGPD assinado no sistema.`;
-        erroDiv.style.display = 'flex';
-
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        return;
-    }
-
-    const modal = document.getElementById('modal-enviar-termo');
-    if (!modal) return;
-
-    // Preenche os dados do parceiro no modal
-    document.getElementById('envio-nome').textContent = parceiroAtual.nome_razao_social;
-    document.getElementById('envio-cpf').textContent = parceiroAtual.cpf;
-    document.getElementById('envio-telefone').textContent = parceiroAtual.telefone;
-
-    // Limpa mensagens anteriores
-    document.getElementById('envio-sucesso').style.display = 'none';
-    document.getElementById('envio-erro').style.display = 'none';
-    document.getElementById('envio-confirmacao').style.display = 'block';
-
-    // Restaura botão
-    const btn = document.getElementById('btn-confirmar-envio');
-    btn.disabled = false;
-    btn.querySelector('.btn-text').style.display = 'flex';
-    btn.querySelector('.spinner').style.display = 'none';
-
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-}
-
-/**
- * Fecha o modal de enviar termo
- */
-function fecharModalEnviarTermo() {
-    const modal = document.getElementById('modal-enviar-termo');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }
-}
-
-/**
- * Confirma e envia o termo LGPD via webhook (n8n)
- */
-async function confirmarEnvioTermo() {
-    const btn = document.getElementById('btn-confirmar-envio');
-    const sucessoDiv = document.getElementById('envio-sucesso');
-    const erroDiv = document.getElementById('envio-erro');
-    const erroMsg = document.getElementById('envio-erro-msg');
-
-    // Esconde mensagens anteriores
-    sucessoDiv.style.display = 'none';
-    erroDiv.style.display = 'none';
-
-    // Loading
-    btn.disabled = true;
-    btn.querySelector('.btn-text').style.display = 'none';
-    btn.querySelector('.spinner').style.display = 'inline-block';
-
-    try {
-        const response = await fetch('https://n8n.alfredooliveira.com.br/webhook/fba3c3cd-5196-4b1b-be0f-9f47e2705258', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                nome_razao_social: parceiroAtual.nome_razao_social,
-                cpf: parceiroAtual.cpf,
-                telefone: parceiroAtual.telefone
-            })
-        });
-
-        if (response.ok) {
-            // Grava a data/hora do envio no Supabase
-            const agora = new Date().toISOString();
-            const { error: erroUpdate } = await supabaseClient
-                .from('parceiros')
-                .update({ data_envio: agora })
-                .eq('id', parceiroAtual.id);
-
-            if (erroUpdate) {
-                console.error('Termo enviado, mas erro ao registrar data de envio:', erroUpdate.message);
-            } else {
-                parceiroAtual.data_envio = agora;
-            }
-
-            document.getElementById('envio-sucesso-msg').textContent = 'Termo LGPD enviado com sucesso via WhatsApp!';
-            sucessoDiv.style.display = 'flex';
-
-            setTimeout(() => {
-                fecharModalEnviarTermo();
-            }, 2000);
-        } else {
-            erroMsg.textContent = 'Erro ao enviar o termo. Tente novamente.';
-            erroDiv.style.display = 'flex';
-            console.error('Webhook respondeu com status:', response.status);
-        }
-    } catch (err) {
-        erroMsg.textContent = 'Erro de conexão. Verifique sua internet.';
-        erroDiv.style.display = 'flex';
-        console.error('Erro ao chamar webhook:', err);
-    } finally {
-        btn.disabled = false;
-        btn.querySelector('.btn-text').style.display = 'flex';
-        btn.querySelector('.spinner').style.display = 'none';
-    }
+    parceiro.data_envio = agora;
+    invalidarCacheParceiro(parceiro.id);
 }
 
 /**
@@ -536,6 +615,18 @@ async function carregarDetalhe() {
         return;
     }
 
+    // 1) Cache: pinta imediatamente o que já foi visto nesta sessão
+    const chaveCache = 'sbr_parceiro_' + id;
+    const emCache = cacheNavGet(chaveCache);
+    if (emCache) {
+        parceiroAtual = emCache;
+        pintarDetalheParceiro(emCache);
+        aplicarPermissoesDetalhe();
+        preencherConsultorDetalhe();
+        carregarDadosFocoDetalhe(emCache);
+    }
+
+    // 2) Banco: revalida os dados
     const { data: parceiro, error } = await supabaseClient
         .from('parceiros')
         .select('*')
@@ -544,12 +635,14 @@ async function carregarDetalhe() {
 
     if (error || !parceiro) {
         console.error('Erro ao carregar parceiro:', error?.message);
-        document.getElementById('parceiro-nome').textContent = 'Erro ao carregar parceiro';
+        if (!emCache) document.getElementById('parceiro-nome').textContent = 'Erro ao carregar parceiro';
         return;
     }
 
     // Armazena o parceiro atual para uso na edição
     parceiroAtual = parceiro;
+    cacheNavSet(chaveCache, parceiro);
+    pintarDetalheParceiro(parceiro);
 
     // Atualiza as informações
     const nomeEl = document.getElementById('parceiro-nome');
@@ -564,7 +657,7 @@ async function carregarDetalhe() {
             const temPDF = await verificarTermoPDF(parceiro.cpf);
             let termoHTML = '<span class="badge-sim"><i class="fas fa-check-circle"></i> Sim</span>';
             if (parceiro.termo_aceito_foco) {
-                termoHTML += ' <span class="badge-foco" style="margin-left:6px; padding:2px 6px; border-radius:10px; background:#004085; color:#fff; font-size:10px; font-weight:600;">FOCO</span>';
+                termoHTML += ' <span class="badge-foco">FOCO</span>';
             }
             if (temPDF) {
                 termoHTML += ' <button class="btn-termo-pdf" title="Ver Termo PDF" onclick="abrirTermoPDF(\'' + parceiro.cpf + '\')"><i class="fas fa-file-pdf"></i></button>';
@@ -651,6 +744,118 @@ async function carregarDetalhe() {
 
     // Aplica restrições visuais baseadas no role do usuário
     aplicarPermissoesDetalhe();
+
+    // Link para o acompanhamento deste cliente (Tela 6)
+    const btnAcomp = document.getElementById('btn-acompanhamento');
+    if (btnAcomp) btnAcomp.href = `acompanhamento?id=${encodeURIComponent(parceiro.id)}`;
+
+    // Consultor = usuário logado (perfil carregado ou cache da navbar)
+    preencherConsultorDetalhe();
+
+    // Interação (Case) e e-mail vindos do FOCO — assíncrono, sem travar a tela
+    carregarDadosFocoDetalhe(parceiro);
+}
+
+/**
+ * Pinta os campos do cabeçalho/atendimento da tela de detalhe.
+ * Usada tanto pelo cache (instantâneo) quanto pelos dados do banco.
+ */
+function pintarDetalheParceiro(parceiro) {
+    const set = (id, valor) => { const el = document.getElementById(id); if (el) el.textContent = valor; };
+    set('parceiro-nome', parceiro.nome_razao_social);
+    set('info-nome', parceiro.nome_razao_social);
+    set('info-cpf', parceiro.cpf);
+    set('info-account', parceiro.id_salesforce || '-');
+    set('info-telefone', parceiro.telefone);
+
+    const btnAcomp = document.getElementById('btn-acompanhamento');
+    if (btnAcomp) btnAcomp.href = `acompanhamento?id=${encodeURIComponent(parceiro.id)}`;
+}
+
+/**
+ * Nome do consultor logado, com fallbacks em cadeia:
+ * perfil carregado → cache da navbar → perfil no banco → e-mail do usuário.
+ * Usado no card "Atendimento em andamento" e ao gravar documentos.
+ */
+async function nomeConsultorAtual() {
+    const perfil = (typeof obterPerfilAtual === 'function') ? obterPerfilAtual() : null;
+    if (perfil?.nome_completo) return perfil.nome_completo;
+
+    const cache = sessionStorage.getItem('sbr_navbar_nome');
+    if (cache) return cache;
+
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return null;
+
+        const { data } = await supabaseClient
+            .from('perfis_usuarios')
+            .select('nome_completo')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        return data?.nome_completo || user.email || null;
+    } catch (e) {
+        console.warn('nomeConsultorAtual:', e?.message || e);
+        return null;
+    }
+}
+
+/**
+ * Preenche o campo Consultor com o nome do usuário logado.
+ */
+async function preencherConsultorDetalhe() {
+    const el = document.getElementById('info-consultor');
+    if (!el) return;
+    const nome = await nomeConsultorAtual();
+    if (nome) el.textContent = nome;
+}
+
+/**
+ * Busca no FOCO (via proxy) os dados do Contact e a última interação (Case)
+ * do parceiro e preenche a tela de detalhe. Em falha, mantém "—".
+ */
+async function carregarDadosFocoDetalhe(parceiro) {
+    const interacaoEl = document.getElementById('info-interacao');
+    if (!interacaoEl) return;
+
+    const chaveCache = 'sbr_foco_' + (parceiro.cpf || '').replace(/\D/g, '');
+
+    // Cache da sessão: mostra a interação na hora e revalida em seguida
+    const emCache = cacheNavGet(chaveCache);
+    if (emCache) {
+        if (parceiroAtual && parceiroAtual.id === parceiro.id) {
+            parceiroAtual._foco = emCache.contato || null;
+            parceiroAtual._focoInteracao = emCache.interacao || null;
+        }
+        if (emCache.interacao?.CaseNumber) interacaoEl.textContent = emCache.interacao.CaseNumber;
+    }
+
+    try {
+        // Contact e Case em paralelo (o Case também resolve por CPF via subquery)
+        const [contato, interacao] = await Promise.all([
+            buscarContatoFocoPorCPF(parceiro.cpf),
+            buscarUltimaInteracaoFoco(parceiro.id_contato_salesforce, parceiro.cpf)
+        ]);
+
+        if (parceiroAtual && parceiroAtual.id === parceiro.id) {
+            parceiroAtual._foco = contato || null;
+            if (interacao) parceiroAtual._focoInteracao = interacao;
+        }
+        if (interacao?.CaseNumber) interacaoEl.textContent = interacao.CaseNumber;
+
+        if (contato || interacao) cacheNavSet(chaveCache, { contato, interacao });
+    } catch (e) {
+        console.warn('FOCO indisponível para o detalhe:', e?.message || e);
+    }
+}
+
+/**
+ * Navega para a página do documento/termo selecionado na grade.
+ */
+function abrirDocumento(tipo) {
+    if (!parceiroAtual?.id) return;
+    window.location.href = `documento?id=${encodeURIComponent(parceiroAtual.id)}&tipo=${encodeURIComponent(tipo)}`;
 }
 
 // ===== Funções do Modal de Edição =====
@@ -677,6 +882,9 @@ function abrirModalEdicao() {
     document.getElementById('edit-nome').value = parceiroAtual.nome_razao_social;
     document.getElementById('edit-cpf').value = parceiroAtual.cpf;
     document.getElementById('edit-telefone').value = parceiroAtual.telefone;
+    // E-mail: usa o do cadastro; se ainda não houver, mostra o do FOCO
+    const emailEl = document.getElementById('edit-email');
+    if (emailEl) emailEl.value = parceiroAtual.email || parceiroAtual._foco?.Email || '';
 
     // Limpa mensagens
     document.getElementById('edicao-sucesso').style.display = 'none';
@@ -760,6 +968,7 @@ async function confirmarExclusao() {
             return;
         }
 
+        invalidarCacheParceiro(parceiroAtual.id);
         document.getElementById('excluir-sucesso-msg').textContent = `Cliente "${parceiroAtual.nome_razao_social}" excluído com sucesso!`;
         sucessoDiv.style.display = 'flex';
 
@@ -796,6 +1005,7 @@ async function salvarEdicao(event) {
 
     const id = document.getElementById('edit-id').value;
     const telefone = document.getElementById('edit-telefone').value.trim();
+    const email = (document.getElementById('edit-email')?.value || '').trim();
     const btnSalvar = document.getElementById('btn-salvar-edicao');
     const sucessoDiv = document.getElementById('edicao-sucesso');
     const erroDiv = document.getElementById('edicao-erro');
@@ -812,6 +1022,13 @@ async function salvarEdicao(event) {
         return;
     }
 
+    // Validação do e-mail (opcional, mas se preenchido deve ser válido)
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        erroMsg.textContent = 'E-mail inválido. Verifique o endereço digitado.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
     // Loading
     btnSalvar.disabled = true;
     btnSalvar.querySelector('.btn-text').style.display = 'none';
@@ -820,7 +1037,7 @@ async function salvarEdicao(event) {
     try {
         const { data, error } = await supabaseClient
             .from('parceiros')
-            .update({ telefone: telefone })
+            .update({ telefone: telefone, email: email || null })
             .eq('id', id)
             .select();
 
@@ -830,6 +1047,7 @@ async function salvarEdicao(event) {
             return;
         }
 
+        invalidarCacheParceiro(id);
         let sucessoMsg = 'Parceiro atualizado com sucesso!';
 
         // Atualizar telefone no Salesforce/FOCO (Contact) via API
@@ -853,15 +1071,17 @@ async function salvarEdicao(event) {
 
         if (contactId) {
             try {
-                await atualizarTelefoneContactSebrae(contactId, telefone);
-                console.log('[SalvarEdicao] Telefone sincronizado no SEBRAE com sucesso.');
+                const campos = { Phone: telefone };
+                if (email) campos.Email = email;
+                await atualizarContatoSebrae(contactId, campos);
+                console.log('[SalvarEdicao] Contato sincronizado no SEBRAE com sucesso.');
             } catch (err) {
-                console.error('[SalvarEdicao] Erro ao sincronizar telefone no SEBRAE:', err);
-                sucessoMsg = 'Parceiro atualizado! Aviso: o telefone não pôde ser sincronizado no SEBRAE (' + (err.message || 'erro desconhecido') + ').';
+                console.error('[SalvarEdicao] Erro ao sincronizar contato no SEBRAE:', err);
+                sucessoMsg = 'Parceiro atualizado! Aviso: os dados não puderam ser sincronizados no SEBRAE (' + (err.message || 'erro desconhecido') + ').';
             }
         } else {
             console.warn('[SalvarEdicao] Contact Id não encontrado — sincronização com SEBRAE ignorada.');
-            sucessoMsg = 'Parceiro atualizado! Aviso: Contact Id do SEBRAE não encontrado — o telefone não foi sincronizado no Salesforce.';
+            sucessoMsg = 'Parceiro atualizado! Aviso: Contact Id do SEBRAE não encontrado — os dados não foram sincronizados no Salesforce.';
         }
 
         document.getElementById('edicao-sucesso-msg').textContent = sucessoMsg;
@@ -1042,7 +1262,6 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         fecharModalCadastro();
         fecharModalEdicao();
-        fecharModalEnviarTermo();
         fecharModalExcluir();
         fecharModalBusca();
     }
@@ -1403,9 +1622,7 @@ function aplicarPermissoesDetalheComCache() {
     const role = sessionStorage.getItem(_CACHE_ROLE_DETALHE);
     if (role !== 'admin' && role !== 'operador') return;
     const btnEditar = document.querySelector('.btn-editar-parceiro');
-    const btnEnviar = document.querySelector('.btn-enviar-termo');
     if (btnEditar) btnEditar.style.display = '';
-    if (btnEnviar) btnEnviar.style.display = '';
 }
 
 // ===== Inicialização =====
@@ -1415,25 +1632,42 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Evita o “flash” de só Voltar + Buscar e melhora a experiência.
         aplicarPermissoesDetalheComCache();
 
-        // Garante que _perfilAtual está carregado antes de renderizar qualquer página.
-        // verificarAutenticacao() busca o perfil do banco e redireciona se não autenticado.
-        const session = await verificarAutenticacao();
-        if (!session) return;
+        // Autenticação e carregamento dos dados correm EM PARALELO: a sessão do
+        // Supabase já está no storage do navegador, então as queries saem
+        // autenticadas sem esperar o perfil ser buscado (economiza ~300ms).
+        const promessaAuth = verificarAutenticacao();
 
-        // Página de lista: carregar parceiros do banco
-        if (document.getElementById('tbody-parceiros')) {
-            await carregarParceiros();
-        }
+        const promessaDados = (async () => {
+            try {
+                // Página de lista: carregar parceiros do banco
+                if (document.getElementById('tbody-parceiros')) {
+                    await carregarParceiros();
+                    // Aceite/recusa chega pelo WhatsApp: atualiza a tela sozinha
+                    await ligarAtualizacaoAoVivo('lista-clientes', recarregarListaAoVivo);
+                    atualizarAoVoltarParaAba(recarregarListaAoVivo);
+                }
+                // Página de detalhe: carregar dados do parceiro
+                if (document.getElementById('parceiro-nome')) {
+                    await carregarDetalhe();
+                }
+            } catch (e) {
+                console.warn('Carregamento inicial:', e?.message || e);
+            }
+        })();
 
-        // Página de detalhe: carregar dados do parceiro
-        if (document.getElementById('parceiro-nome')) {
-            await carregarDetalhe();
-        }
+        const session = await promessaAuth;
+        if (!session) return; // verificarAutenticacao() já redirecionou
+
+        await promessaDados;
+
+        // Perfil só ficou disponível após o auth: reaplica o que depende dele
+        aplicarPermissoesDetalhe();
+        preencherConsultorDetalhe();
 
         // Filtros automáticos da tabela principal
         const filtroPesquisa = document.getElementById('filtro-pesquisa');
         const filtroStatus   = document.getElementById('filtro-status');
-        const filtroTelefone = document.getElementById('filtro-telefone');
+        const filtroTipo     = document.getElementById('filtro-tipo');
 
         if (filtroPesquisa) {
             let _debounceFiltroPesquisa = null;
@@ -1455,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Selects: filtra ao mudar a opção
         filtroStatus?.addEventListener('change', () => filtrarParceiros());
-        filtroTelefone?.addEventListener('change', () => filtrarParceiros());
+        filtroTipo?.addEventListener('change', () => filtrarParceiros());
     } catch (err) {
         console.error('Erro na inicialização:', err);
     }

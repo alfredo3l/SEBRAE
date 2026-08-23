@@ -1,8 +1,9 @@
 /* ============================================
    Vercel Serverless Function - PATCH Contact SEBRAE
    Rota: PATCH /api/sebrae/contact/[id]
-   Body: { "Phone": "(00)00000-0000" }
-   Atualiza o campo Phone do Contact no Salesforce/FOCO.
+   Body: { "Phone": "(00)00000-0000" } e/ou { "Email": "nome@dominio" }
+   Atualiza Phone e/ou Email do Contact no Salesforce/FOCO.
+   ⚠️ A mesma lógica existe em dev.js — replicar qualquer mudança lá.
    ============================================ */
 
 const SEBRAE_API_BASE    = process.env.SEBRAE_API_BASE    || 'https://hlg-gateway.sebrae.com.br/foco-stg';
@@ -68,9 +69,13 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: 'Body JSON inválido.' });
     }
 
-    const phone = body.Phone;
-    if (phone === undefined || phone === null) {
-        return res.status(400).json({ error: 'Campo "Phone" é obrigatório no body.' });
+    // Aceita Phone e/ou Email; ao menos um é obrigatório
+    const campos = {};
+    if (body.Phone !== undefined && body.Phone !== null) campos.Phone = String(body.Phone);
+    if (body.Email !== undefined && body.Email !== null) campos.Email = String(body.Email);
+
+    if (Object.keys(campos).length === 0) {
+        return res.status(400).json({ error: 'Informe "Phone" e/ou "Email" no body.' });
     }
 
     let token;
@@ -92,7 +97,7 @@ module.exports = async function handler(req, res) {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ Phone: String(phone) })
+            body: JSON.stringify(campos)
         });
 
         if (!sfResp.ok) {

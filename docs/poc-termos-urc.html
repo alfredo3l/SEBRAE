@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POC — Evolução Termos URC | Aceite LGPD (SEBRAE/MS)</title>
+<style>
+  :root{
+    --azul:#1e4d8c; --azul-esc:#173d70; --azul-cl:#2563a8;
+    --verde:#28a745; --verde-esc:#1e7e34; --vermelho:#dc3545;
+    --cinza:#f4f6f9; --borda:#e2e6ea; --txt:#2c3e50; --muted:#7a8699;
+    --whatsapp:#25d366; --foco:#0b3d91;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--cinza);color:var(--txt);font-size:14px}
+  /* ---------- Barra de passos (POC) ---------- */
+  .poc-bar{background:#0f2540;color:#fff;padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:1000}
+  .poc-bar b{font-size:13px;letter-spacing:.5px}
+  .poc-bar .tag{background:#ffd43b;color:#3a2f00;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .step{background:#1c3a5e;color:#c9d6e5;border:none;padding:6px 11px;border-radius:20px;font-size:12px;cursor:pointer;transition:.2s;white-space:nowrap}
+  .step:hover{background:#274d78}
+  .step.active{background:#ffd43b;color:#3a2f00;font-weight:700}
+  .step small{display:inline-block;background:rgba(0,0,0,.15);border-radius:8px;padding:0 5px;margin-right:4px}
+
+  /* ---------- Navegador fake ---------- */
+  .browser{background:#dfe3e8;padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #cfd4da}
+  .dots{display:flex;gap:5px}.dots span{width:11px;height:11px;border-radius:50%}
+  .dots .r{background:#ff5f56}.dots .y{background:#ffbd2e}.dots .g{background:#27c93f}
+  .url{flex:1;background:#fff;border-radius:16px;padding:5px 14px;font-size:12px;color:#333;border:1px solid #cfd4da}
+
+  /* ---------- App base ---------- */
+  .app{display:none}.app.show{display:block}
+  header.top{background:var(--azul);color:#fff;padding:14px 26px;display:flex;align-items:center;justify-content:space-between}
+  header.top .brand{font-size:20px;font-weight:600}
+  header.top .user{display:flex;align-items:center;gap:8px;font-size:14px}
+  header.top .user .av{width:30px;height:30px;border-radius:50%;background:#fff;color:var(--azul);display:flex;align-items:center;justify-content:center;font-weight:700}
+  .wrap{max-width:1500px;margin:0 auto;padding:22px 26px}
+  .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+  .page-head h1{font-size:26px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .btn{border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:.15s}
+  .btn:hover{filter:brightness(.95)}
+  .btn-azul{background:var(--azul);color:#fff}
+  .btn-verde{background:var(--verde);color:#fff}
+  .btn-wpp{background:var(--whatsapp);color:#fff}
+  .btn-cinza{background:#6c757d;color:#fff}
+  .btn-out{background:#fff;color:var(--azul);border:1px solid var(--azul)}
+  .btn-sm{padding:6px 11px;font-size:12px}
+  .card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:18px 20px;margin-bottom:20px}
+  .filters{display:grid;grid-template-columns:1fr 260px 260px auto;gap:16px;align-items:end}
+  .filters label{display:block;font-weight:600;margin-bottom:6px;font-size:13px;color:#34506e}
+  .filters input,.filters select,.form input,.form select,.form textarea{width:100%;padding:9px 11px;border:1px solid #ccd3db;border-radius:6px;font-size:13px;font-family:inherit}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;padding:12px 10px;color:#4a5b6e;font-weight:700;border-bottom:2px solid var(--borda);white-space:nowrap}
+  tbody td{padding:12px 10px;border-bottom:1px solid #eef1f4;vertical-align:middle}
+  tbody tr:hover{background:#f8fafc}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 9px;border-radius:14px}
+  .b-sim{background:#d4edda;color:#155724}
+  .b-nao{background:#f8d7da;color:#721c24}
+  .b-foco{background:#0b3d91;color:#fff;font-size:10px}
+  .b-pdf{background:#e7f1ff;color:#0b5ed7}
+  .b-cinza{background:#e2e6ea;color:#495057}
+  .b-amarelo{background:#fff3cd;color:#856404}
+  .ico-eye{width:30px;height:30px;border-radius:50%;background:var(--azul);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .muted{color:var(--muted)}
+  .pag{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:13px}
+  .pag .pages{display:flex;gap:5px}
+  .pag .pages span{padding:6px 11px;border:1px solid var(--borda);border-radius:5px;cursor:pointer}
+  .pag .pages .on{background:var(--azul);color:#fff;border-color:var(--azul)}
+
+  /* Requisito tag */
+  .rf{display:inline-block;background:#eef4ff;color:#1e4d8c;border:1px solid #cfe0ff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;vertical-align:middle}
+  .note{background:#eef4ff;border-left:4px solid var(--azul);padding:10px 14px;border-radius:0 8px 8px 0;font-size:12.5px;color:#2c4056;margin-top:12px}
+
+  /* Menu tipos de documento */
+  .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:8px}
+  .doc-card{border:1px solid #dde3ea;border-radius:10px;padding:16px;cursor:pointer;transition:.15s;background:#fff;position:relative}
+  .doc-card:hover{border-color:var(--azul);box-shadow:0 4px 14px rgba(30,77,140,.15);transform:translateY(-2px)}
+  .doc-card h4{font-size:14px;margin-bottom:6px;color:#213b58;padding-right:44px}
+  .doc-card p{font-size:12px;color:var(--muted)}
+  .doc-card .ic{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:#eef4ff;color:var(--azul);display:flex;align-items:center;justify-content:center;font-size:16px}
+  .doc-card.edit .ic{background:#fff3cd;color:#856404}
+
+  /* Form edição */
+  .form .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
+  .form .row.one{grid-template-columns:1fr}
+  .form label{display:block;font-weight:600;font-size:12.5px;margin-bottom:5px;color:#34506e}
+  .form .auto{background:#f0f7f0;border-color:#bcdcbc}
+  .tag-auto{font-size:10px;font-weight:700;color:#1e7e34;background:#d4edda;padding:1px 6px;border-radius:8px;margin-left:6px}
+  .tag-edit{font-size:10px;font-weight:700;color:#856404;background:#fff3cd;padding:1px 6px;border-radius:8px;margin-left:6px}
+  .doc-preview{background:#fff;border:1px solid #dde3ea;border-radius:8px;padding:22px;font-size:12.5px;line-height:1.7;max-height:340px;overflow:auto}
+  .doc-preview h3{font-size:15px;text-align:center;margin-bottom:14px;text-transform:uppercase}
+
+  /* Celular / WhatsApp */
+  .phone-stage{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;justify-content:center}
+  .phone{width:330px;background:#0b141a;border-radius:34px;padding:12px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+  .phone .screen{background:#e5ddd5;border-radius:24px;overflow:hidden;height:620px;display:flex;flex-direction:column;position:relative}
+  .wpp-head{background:#075e54;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px}
+  .wpp-head .av{width:34px;height:34px;border-radius:50%;background:#25d366;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .wpp-head small{display:block;opacity:.8;font-size:11px}
+  .wpp-body{flex:1;padding:14px;overflow:auto;background:#e5ddd5;background-image:linear-gradient(rgba(229,221,213,.9),rgba(229,221,213,.9))}
+  .msg{background:#fff;border-radius:0 10px 10px 10px;padding:9px 12px;font-size:12.5px;margin-bottom:10px;max-width:88%;box-shadow:0 1px 1px rgba(0,0,0,.1);position:relative}
+  .msg.me{background:#dcf8c6;border-radius:10px 0 10px 10px;margin-left:auto}
+  .msg .time{font-size:9.5px;color:#8a8a8a;text-align:right;margin-top:3px}
+  .pdf-att{display:flex;align-items:center;gap:10px;background:#f2f5f7;border-radius:8px;padding:9px;margin-bottom:6px}
+  .pdf-att .pd{width:36px;height:36px;background:#dc3545;color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+  .accept-box{background:#fff;border-radius:12px;padding:16px;margin:6px 0}
+  .accept-box .chk{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;margin-bottom:12px;color:#333}
+  .accept-box input{margin-top:2px}
+
+  /* Painel status atendente */
+  .status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+  .st-card{border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff}
+  .st-card h5{font-size:13px;margin-bottom:4px}
+  .st-line{display:flex;justify-content:space-between;font-size:11.5px;padding:4px 0;border-top:1px dashed #eef1f4}
+  .timeline{list-style:none;margin-top:10px}
+  .timeline li{position:relative;padding:0 0 16px 24px;font-size:12.5px}
+  .timeline li::before{content:"";position:absolute;left:5px;top:3px;width:11px;height:11px;border-radius:50%;background:var(--verde)}
+  .timeline li::after{content:"";position:absolute;left:10px;top:14px;bottom:0;width:2px;background:#cfe0d0}
+  .timeline li:last-child::after{display:none}
+  .timeline li.pending::before{background:#cbd3dc}
+  .timeline li.pending{color:var(--muted)}
+  .timeline b{display:block}
+  .timeline span{font-size:11px;color:var(--muted)}
+
+  /* Foco */
+  .foco-box{background:linear-gradient(135deg,#0b3d91,#1259c3);color:#fff;border-radius:12px;padding:26px;text-align:center}
+  .foco-box .big{font-size:44px;margin-bottom:6px}
+  .kv{display:grid;grid-template-columns:180px 1fr;gap:6px 14px;font-size:13px;margin-top:14px;text-align:left;max-width:520px;margin-left:auto;margin-right:auto}
+  .kv .k{color:var(--muted);font-weight:600}
+  .flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;margin:8px 0 4px}
+  .flow .fchip{background:#eef4ff;border:1px solid #cfe0ff;color:#1e4d8c;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px}
+  .flow .arr{color:#9db4d0;font-weight:700}
+  h2.sec{font-size:19px;margin-bottom:4px;color:#1e3a5f}
+  .sub{color:var(--muted);margin-bottom:16px;font-size:13px}
+  .success-banner{background:#d4edda;color:#155724;border:1px solid #b6dfc0;border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:600;margin-bottom:16px}
+  .footer-nav{display:flex;justify-content:space-between;margin-top:22px}
+  @media(max-width:900px){.filters{grid-template-columns:1fr}.form .row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ===================== BARRA POC ===================== -->
+<div class="poc-bar">
+  <b>POC — EVOLUÇÃO TERMOS URC</b><span class="tag">PROTÓTIPO NAVEGÁVEL</span>
+  <div class="steps">
+    <button class="step active" data-go="1"><small>1</small>Lista de Clientes</button>
+    <button class="step" data-go="2"><small>2</small>Selecionar Documento</button>
+    <button class="step" data-go="3"><small>3</small>Editar/Preencher</button>
+    <button class="step" data-go="4"><small>4</small>Enviar WhatsApp</button>
+    <button class="step" data-go="5"><small>5</small>Aceite do Cliente</button>
+    <button class="step" data-go="6"><small>6</small>Status p/ Atendente</button>
+    <button class="step" data-go="7"><small>7</small>Upload FOCO</button>
+  </div>
+</div>
+
+<!-- Navegador fake -->
+<div class="browser">
+  <div class="dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+  <div class="url">🔒 aceitegpd.ms.sebrae.com.br/termos-urc</div>
+</div>
+
+<!-- Header comum -->
+<header class="top">
+  <div class="brand">Aceite LGPD <span style="font-size:13px;opacity:.85;font-weight:400">| Termos URC</span></div>
+  <div class="user"><span class="av">A</span> Administrador SEBRAE</div>
+</header>
+
+<!-- ============================================================= -->
+<!-- TELA 1 — LISTA DE CLIENTES (evoluída)                          -->
+<!-- ============================================================= -->
+<div class="app show" id="app1">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>📋 Lista de Clientes</h1>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-verde" onclick="go(2)">➕ Novo Documento</button>
+        <button class="btn btn-out">🔍 Buscar Cliente</button>
+        <button class="btn btn-azul">🏠 Início</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <div><label>🔍 Pesquisar</label><input placeholder="Nome, CPF, Account ID ou Telefone"></div>
+        <div><label>🔖 Status do Termo</label><select><option>Todos</option><option>Aceito</option><option>Não aceito</option><option>Enviado</option><option>Gerado</option></select></div>
+        <div><label>📄 Tipo de Documento <span class="rf">RF01</span></label>
+          <select><option>Todos</option><option>Termo LGPD</option><option>Parcelamento MEI - Termo de Ciência</option><option>Reenquadramento do MEI</option><option>Termo de Responsabilidade – Formalização</option><option>Declaração de Responsabilidade</option></select></div>
+        <div><button class="btn btn-azul" style="width:100%">▼ Filtrar</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="margin-bottom:8px" class="muted">Mostrar <b>10</b> registros por página</div>
+      <table>
+        <thead><tr>
+          <th>CPF</th><th>Nome/Razão Social</th><th>Telefone</th><th>Account ID</th>
+          <th>Documento <span class="rf">RF01</span></th><th>Status <span class="rf">RF11</span></th>
+          <th>Data Envio</th><th>Data Aceite</th><th>FOCO <span class="rf">RF19</span></th><th>Ações</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>001.145.461-00</td><td>LIGIA GERMANO SILVA</td><td>(61)99121-1719</td><td>0018V00002XV530QAD</td>
+            <td>Termo LGPD</td><td><span class="badge b-nao">✖ Não aceito</span></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+          <tr style="background:#f0f7ff">
+            <td>025.570.401-18</td><td>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</td><td>(67)99232-1688</td><td>001V200000Rc0HIIAZ</td>
+            <td>Termo Responsab. – Formalização</td><td><span class="badge b-sim">✔ Aceito</span> <span class="badge b-pdf">PDF</span></td><td>11/08/2026 09:19</td><td>11/08/2026 09:25</td><td><span class="badge b-foco">FOCO ✓</span></td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+          <tr>
+            <td>001.150.819-17</td><td>RUTH MEIRA</td><td>(67)99236-1451</td><td>0018V00002XV53PQAT</td>
+            <td>Declaração de Responsabilidade</td><td><span class="badge b-amarelo">✈ Enviado</span></td><td>16/06/2026 10:19</td><td class="muted">—</td><td class="muted">—</td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+          <tr>
+            <td>661.903.201-04</td><td>MARCO AURELIO DOS SANTOS</td><td>(67)99236-1451</td><td>001V200000VdCqqIAF</td>
+            <td>Parcelamento MEI – PGFN</td><td><span class="badge b-sim">✔ Aceito</span> <span class="badge b-pdf">PDF</span></td><td>03/06/2026 14:19</td><td>03/06/2026 14:23</td><td><span class="badge b-foco">FOCO ✓</span></td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+          <tr>
+            <td>066.420.051-63</td><td>ADILER ALEX MATIAS RAMAO</td><td>(67)98137-6840</td><td>001V200000w6g5sIAA</td>
+            <td>Reenquadramento do MEI</td><td><span class="badge b-cinza">📄 Gerado</span></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+          <tr>
+            <td>000.080.867-96</td><td>PAULO VIEIRA DA ROSA</td><td>(61)99184-0612</td><td>0018V00002XV4TXQA1</td>
+            <td>Termo LGPD</td><td><span class="badge b-sim">✔ Aceito</span> <span class="badge b-pdf">PDF</span></td><td>29/05/2026 11:03</td><td>29/05/2026 11:04</td><td><span class="badge b-foco">FOCO ✓</span></td>
+            <td><span class="ico-eye" onclick="go(6)">👁</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pag">
+        <span class="muted">Mostrando 1 a 6 num total de 48</span>
+        <div class="pages"><span>Anterior</span><span class="on">1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>Seguinte</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>O que muda nesta tela:</b> agora cada cliente pode ter <b>vários documentos</b> vinculados ao mesmo atendimento/interação
+      <span class="rf">RF13</span> <span class="rf">RF18</span>, com coluna de <b>Tipo de Documento</b> <span class="rf">RF01</span>,
+      <b>Status</b> individual (Gerado / Enviado / Aceito / Não aceito) <span class="rf">RF11</span> <span class="rf">RF17</span>
+      e indicação de <b>integração automática no FOCO</b> <span class="rf">RF19</span>.
+    </div>
+    <div class="footer-nav">
+      <span></span>
+      <button class="btn btn-azul" onclick="go(2)">Iniciar novo documento ➜</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 2 — SELECIONAR TIPO DE DOCUMENTO                          -->
+<!-- ============================================================= -->
+<div class="app" id="app2">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>🗂️ Selecionar Documento <span class="rf">RF02</span></h1>
+      <button class="btn btn-cinza" onclick="go(1)">← Voltar</button>
+    </div>
+
+    <div class="card">
+      <h2 class="sec">Atendimento em andamento</h2>
+      <p class="sub">Interação nº <b>INT-2026-004821</b> (consumida do FOCO <span class="rf">RF12</span>) • Consultor: <b>Marcilene / URC</b></p>
+      <div class="kv" style="margin:0">
+        <div class="k">Cliente</div><div>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</div>
+        <div class="k">CPF</div><div>025.570.401-18</div>
+        <div class="k">Account ID</div><div>001V200000Rc0HIIAZ</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="sec">Selecione o termo/declaração a ser gerado</h2>
+      <p class="sub">Não é obrigatório enviar todos — apenas o necessário para este atendimento. <span class="rf">RF02</span> <span class="rf">RF13</span></p>
+      <div class="doc-grid">
+        <div class="doc-card" onclick="go(3)"><span class="ic">🔒</span><h4>Termo LGPD</h4><p>Preenchimento 100% automático (FOCO). Sem edição.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Parcelamento de Débitos do MEI — Termo de Ciência e Responsabilidade</h4><p>Requer preenchimento do consultor. <span class="rf">RF05</span></p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Solicitação de Reenquadramento do MEI</h4><p>Requer preenchimento do consultor.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Termo de Responsabilidade — Formalização</h4><p>Requer preenchimento do consultor.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Declaração de Responsabilidade</h4><p>Requer preenchimento do consultor.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Termo de Responsabilidade — Alteração</h4><p>Requer preenchimento do consultor.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Parcelamento de Débitos do MEI — PGFN</h4><p>Requer preenchimento do consultor.</p></div>
+        <div class="doc-card edit" onclick="go(3)"><span class="ic">✏️</span><h4>Parcelamento de Débitos do MEI</h4><p>Requer preenchimento do consultor.</p></div>
+      </div>
+      <div class="note">Os modelos e campos de cada documento são <b>previamente parametrizados</b> na solução <span class="rf">RF01</span>. Documentos marcados com ✏️ abrem campos editáveis pelo consultor <span class="rf">RF05</span>.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 3 — EDITAR / PREENCHER                                    -->
+<!-- ============================================================= -->
+<div class="app" id="app3">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>✏️ Editar e Preencher Documento</h1>
+      <button class="btn btn-cinza" onclick="go(2)">← Trocar documento</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="editGrid">
+      <!-- Coluna esquerda: formulário -->
+      <div class="card form">
+        <h2 class="sec">Termo de Responsabilidade — Formalização</h2>
+        <p class="sub">Dados recuperados automaticamente do cadastro / FOCO <span class="rf">RF03</span> <span class="rf">RF04</span></p>
+
+        <div class="row">
+          <div><label>Nome/Razão Social <span class="tag-auto">AUTO • FOCO</span></label><input class="auto" value="ANA CAROLINA DA SILVA MEDEIROS MOREIRA" readonly></div>
+          <div><label>CPF <span class="tag-auto">AUTO • FOCO</span></label><input class="auto" value="025.570.401-18" readonly></div>
+        </div>
+        <div class="row">
+          <div><label>CNPJ (quando aplicável) <span class="tag-auto">AUTO • FOCO</span></label><input class="auto" value="—" readonly></div>
+          <div><label>Telefone (WhatsApp) <span class="tag-edit">EDITÁVEL</span></label><input value="(67)99232-1688"></div>
+        </div>
+        <div class="row">
+          <div><label>E-mail <span class="tag-edit">NOVO CAMPO</span> <span class="rf">RF20</span></label><input value="ana.moreira@ms.sebrae.com.br"></div>
+          <div><label>Account ID <span class="tag-auto">AUTO • FOCO</span></label><input class="auto" value="001V200000Rc0HIIAZ" readonly></div>
+        </div>
+
+        <div class="row one"><div><label>Objeto da formalização <span class="tag-edit">PREENCHIMENTO DO CONSULTOR</span> <span class="rf">RF05</span></label>
+          <input value="Formalização de MEI — atividade de comércio varejista"></div></div>
+        <div class="row">
+          <div><label>Nº do processo / interação <span class="tag-auto">AUTO • FOCO</span> <span class="rf">RF12</span></label><input class="auto" value="INT-2026-004821" readonly></div>
+          <div><label>Data do atendimento <span class="tag-auto">AUTO</span></label><input class="auto" value="19/08/2026" readonly></div>
+        </div>
+        <div class="row one"><div><label>Observações complementares <span class="tag-edit">EDITÁVEL</span></label>
+          <textarea rows="2">O cliente declara estar ciente das responsabilidades relativas à formalização junto ao SEBRAE/MS.</textarea></div></div>
+
+        <div class="note">Campos verdes = recuperados automaticamente (não redigitar) <span class="rf">RF03</span>. Campos com ✏️ = complementados pelo consultor <span class="rf">RF05</span>. Inclusão do campo de <b>e-mail</b> com integração ao FOCO <span class="rf">RF20</span>.</div>
+      </div>
+
+      <!-- Coluna direita: pré-visualização -->
+      <div class="card">
+        <h2 class="sec">Pré-visualização do documento</h2>
+        <p class="sub">Gerado com preenchimento automático + complementos do consultor</p>
+        <div class="doc-preview">
+          <h3>Termo de Responsabilidade — Formalização</h3>
+          <p>Pelo presente instrumento, <b>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</b>, inscrita no CPF sob o nº <b>025.570.401-18</b>, declara para os devidos fins que está ciente e de acordo com as condições referentes à <b>Formalização de MEI — atividade de comércio varejista</b>, no âmbito do atendimento realizado pelo SEBRAE/MS.</p>
+          <p>Processo/Interação nº <b>INT-2026-004821</b> — Data do atendimento: <b>19/08/2026</b>.</p>
+          <p>O cliente declara estar ciente das responsabilidades relativas à formalização junto ao SEBRAE/MS.</p>
+          <p style="margin-top:22px">_______________________________________<br><span class="muted">Assinatura eletrônica / aceite via WhatsApp</span></p>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-out" style="flex:1" onclick="go(2)">Cancelar</button>
+          <button class="btn btn-verde" style="flex:1" onclick="go(4)">📄 Gerar e prosseguir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 4 — ENVIAR VIA WHATSAPP                                   -->
+<!-- ============================================================= -->
+<div class="app" id="app4">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>📲 Enviar via WhatsApp <span class="rf">RF07</span></h1>
+      <button class="btn btn-cinza" onclick="go(3)">← Voltar à edição</button>
+    </div>
+
+    <div class="card">
+      <h2 class="sec">Validações automáticas antes do envio</h2>
+      <p class="sub">A plataforma valida os dados obrigatórios (reaproveitando o fluxo atual do Aceite LGPD)</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="badge b-sim">✔ CPF Válido</span>
+        <span class="badge b-sim">✔ Cadastro validado no FOCO</span>
+        <span class="badge b-sim">✔ Nome válido</span>
+        <span class="badge b-sim">✔ Telefone válido</span>
+        <span class="badge b-sim">✔ E-mail válido <span class="rf">RF20</span></span>
+        <span class="badge b-amarelo">📄 Documento gerado</span>
+      </div>
+    </div>
+
+    <div style="max-width:520px;margin:0 auto">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="background:var(--whatsapp);color:#fff;padding:16px 20px;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px">✈ Enviar Documento via WhatsApp</div>
+        <div style="padding:22px">
+          <p style="margin-bottom:14px">ℹ️ Deseja enviar o documento <b>Termo de Responsabilidade — Formalização</b> via WhatsApp para:</p>
+          <div style="background:#f6f8fa;border-radius:8px;padding:16px">
+            <div class="kv" style="grid-template-columns:130px 1fr;margin:0">
+              <div class="k">Nome/Razão Social:</div><div>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</div>
+              <div class="k">CPF:</div><div>025.570.401-18</div>
+              <div class="k">Telefone:</div><div>(67)99232-1688</div>
+              <div class="k">E-mail:</div><div>ana.moreira@ms.sebrae.com.br</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:20px">
+            <button class="btn btn-out" style="flex:1" onclick="go(2)">✖ Cancelar</button>
+            <button class="btn btn-wpp" style="flex:1" onclick="go(5)">✈ Enviar</button>
+          </div>
+        </div>
+      </div>
+      <div class="note">Reaproveita o fluxo de mensageria já existente na solução <span class="rf">RF07</span>. O status do documento muda para <b>Enviado</b> <span class="rf">RF11</span>.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 5 — ACEITE DO CLIENTE (celular)                           -->
+<!-- ============================================================= -->
+<div class="app" id="app5">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>📱 Aceite do Cliente <span class="rf">RF08</span></h1>
+      <button class="btn btn-cinza" onclick="go(4)">← Voltar</button>
+    </div>
+
+    <div class="phone-stage">
+      <!-- Celular 1: recebe PDF -->
+      <div>
+        <p style="text-align:center;font-weight:700;margin-bottom:10px;color:#34506e">1. Cliente recebe o PDF <span class="rf">RF07</span></p>
+        <div class="phone"><div class="screen">
+          <div class="wpp-head"><span class="av">S</span><div>SEBRAE/MS<small>online</small></div></div>
+          <div class="wpp-body">
+            <div class="msg">Olá, ANA CAROLINA! 👋<br>Segue o documento do seu atendimento para leitura e aceite.<div class="time">09:19</div></div>
+            <div class="msg">
+              <div class="pdf-att"><div class="pd">PDF</div><div><b style="font-size:12px">Termo_Responsabilidade_Formalizacao.pdf</b><br><span class="muted" style="font-size:11px">2 páginas • 148 KB</span></div></div>
+              <button class="btn btn-azul btn-sm" style="width:100%" onclick="showAccept()">📖 Abrir para ler e aceitar</button>
+              <div class="time">09:19</div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- Celular 2: aceite -->
+      <div>
+        <p style="text-align:center;font-weight:700;margin-bottom:10px;color:#34506e">2. Leitura e aceite eletrônico <span class="rf">RF08</span></p>
+        <div class="phone"><div class="screen">
+          <div class="wpp-head" style="background:#1e4d8c"><span class="av" style="background:#fff;color:#1e4d8c">📄</span><div>Aceite de Documento<small>SEBRAE/MS • seguro 🔒</small></div></div>
+          <div class="wpp-body" style="background:#f4f6f9;background-image:none">
+            <div class="accept-box">
+              <h4 style="font-size:13px;margin-bottom:8px;text-align:center;text-transform:uppercase">Termo de Responsabilidade — Formalização</h4>
+              <p style="font-size:11px;line-height:1.6;color:#444;max-height:150px;overflow:auto;border:1px solid #eee;padding:8px;border-radius:6px">
+                Pelo presente instrumento, <b>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</b>, CPF <b>025.570.401-18</b>, declara ciência e concordância com as condições referentes à Formalização de MEI, no âmbito do atendimento SEBRAE/MS. Processo nº INT-2026-004821…
+              </p>
+              <div class="chk" style="margin-top:12px"><input type="checkbox" id="ck" checked><label for="ck">Li o documento na íntegra e concordo com os termos apresentados.</label></div>
+              <button class="btn btn-verde" style="width:100%" onclick="doAccept()">✔ Aceitar e Assinar</button>
+              <div id="acceptDone" style="display:none;margin-top:12px;text-align:center;color:#155724;font-weight:700;font-size:12px">
+                ✅ Documento aceito!<br><span style="font-weight:400;color:#555">Aceite registrado em 19/08/2026 às 09:25</span>
+              </div>
+            </div>
+            <p style="font-size:10.5px;color:#8a8a8a;text-align:center;margin-top:8px">Ao aceitar, são registrados data, hora e dados de validação como evidência. <span class="rf">RF09</span></p>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div style="max-width:760px;margin:22px auto 0">
+      <div class="note">Cada documento é aceito <b>individualmente</b> <span class="rf">RF08</span>. No aceite, a plataforma registra <b>identificação do cliente, documento, data, horário e dados de validação</b> como evidência <span class="rf">RF09</span> e gera a <b>versão final com as evidências do aceite</b> <span class="rf">RF10</span>.</div>
+      <div class="footer-nav">
+        <button class="btn btn-cinza" onclick="go(4)">← Voltar</button>
+        <button class="btn btn-azul" onclick="go(6)">Ver status no atendimento ➜</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 6 — STATUS PARA O ATENDENTE                               -->
+<!-- ============================================================= -->
+<div class="app" id="app6">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>👁 Acompanhamento do Atendimento <span class="rf">RF11</span></h1>
+      <button class="btn btn-cinza" onclick="go(1)">← Lista de Clientes</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2 class="sec">ANA CAROLINA DA SILVA MEDEIROS MOREIRA</h2>
+          <p class="sub" style="margin:0">CPF 025.570.401-18 • Interação <b>INT-2026-004821</b> <span class="rf">RF12</span> • (67)99232-1688</p>
+        </div>
+        <button class="btn btn-verde" onclick="go(2)">➕ Enviar novo documento <span class="rf">RF14</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="sec">Documentos deste atendimento <span class="rf">RF06</span> <span class="rf">RF13</span></h2>
+      <p class="sub">Vários documentos convivem no mesmo protocolo, sem sobrescrever anteriores <span class="rf">RF18</span></p>
+      <div class="status-grid">
+        <div class="st-card" style="border-color:#b6dfc0;background:#f6fff8">
+          <h5>Termo Responsab. — Formalização</h5>
+          <span class="badge b-sim">✔ Aceito</span> <span class="badge b-pdf">PDF final</span>
+          <div class="st-line"><span class="muted">Enviado</span><b>19/08 09:19</b></div>
+          <div class="st-line"><span class="muted">Aceito</span><b>19/08 09:25</b></div>
+          <div class="st-line"><span class="muted">FOCO</span><span class="badge b-foco">Integrado ✓</span></div>
+        </div>
+        <div class="st-card" style="border-color:#ffe08a;background:#fffdf5">
+          <h5>Declaração de Responsabilidade</h5>
+          <span class="badge b-amarelo">✈ Enviado</span>
+          <div class="st-line"><span class="muted">Enviado</span><b>19/08 09:40</b></div>
+          <div class="st-line"><span class="muted">Aceito</span><b>—</b></div>
+          <div class="st-line"><span class="muted">FOCO</span><span class="muted">aguardando aceite</span></div>
+        </div>
+        <div class="st-card">
+          <h5>Reenquadramento do MEI</h5>
+          <span class="badge b-cinza">📄 Gerado</span>
+          <div class="st-line"><span class="muted">Enviado</span><b>—</b></div>
+          <div class="st-line"><span class="muted">Aceito</span><b>—</b></div>
+          <div class="st-line"><span class="muted">FOCO</span><span class="muted">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="card">
+        <h2 class="sec">Evidências do aceite <span class="rf">RF09</span></h2>
+        <ul class="timeline">
+          <li><b>Documento gerado</b><span>19/08/2026 09:18 • Consultor Marcilene</span></li>
+          <li><b>Enviado via WhatsApp</b><span>19/08/2026 09:19 • (67)99232-1688</span></li>
+          <li><b>Visualizado pelo cliente</b><span>19/08/2026 09:23</span></li>
+          <li><b>Aceito e assinado eletronicamente</b><span>19/08/2026 09:25 • CPF validado</span></li>
+          <li><b>Documento final gerado c/ evidências</b> <span class="rf">RF10</span><span>19/08/2026 09:25</span></li>
+          <li><b>Armazenado no repositório</b> <span class="rf">RF15</span><span>Diretório do Termo LGPD</span></li>
+          <li class="pending"><b>Integração no FOCO</b> <span class="rf">RF19</span><span>em processamento…</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2 class="sec">Tratamento de recusa <span class="rf">RF17</span></h2>
+        <p class="sub">Caso o cliente recuse, a manifestação também fica registrada e visível para o atendente.</p>
+        <div style="background:#fff5f5;border:1px solid #f5c2c7;border-radius:8px;padding:14px">
+          <span class="badge b-nao">✖ Não aceito</span>
+          <div class="st-line"><span class="muted">Data recusa</span><b>—</b></div>
+          <p style="font-size:12px;color:#721c24;margin-top:8px">Exemplo: LIGIA GERMANO SILVA — Termo LGPD recusado. Situação permanece registrada para acompanhamento.</p>
+        </div>
+        <div class="note" style="margin-top:16px">Histórico completo fica disponível para consulta posterior no histórico do cliente <span class="rf">RF16</span>, respeitando as permissões de acesso <span class="rf">RF19</span>.</div>
+      </div>
+    </div>
+
+    <div class="footer-nav">
+      <button class="btn btn-cinza" onclick="go(5)">← Aceite do cliente</button>
+      <button class="btn btn-azul" onclick="go(7)">Ver upload no FOCO ➜</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- TELA 7 — UPLOAD FOCO                                           -->
+<!-- ============================================================= -->
+<div class="app" id="app7">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>🔗 Integração e Upload no FOCO <span class="rf">RF19</span></h1>
+      <button class="btn btn-cinza" onclick="go(6)">← Voltar</button>
+    </div>
+
+    <div class="success-banner">✅ Todos os aceites finalizados — documento(s) encaminhado(s) automaticamente ao FOCO.</div>
+
+    <div class="card">
+      <h2 class="sec">Fluxo automático após o aceite</h2>
+      <div class="flow">
+        <span class="fchip">Aceite concluído</span><span class="arr">➜</span>
+        <span class="fchip">Gera PDF final c/ evidências <span class="rf">RF10</span></span><span class="arr">➜</span>
+        <span class="fchip">Armazena no repositório <span class="rf">RF15</span></span><span class="arr">➜</span>
+        <span class="fchip">Upload automático no FOCO <span class="rf">RF19</span></span>
+      </div>
+    </div>
+
+    <div class="foco-box">
+      <div class="big">📥</div>
+      <h2 style="margin-bottom:4px">Documento anexado ao FOCO com sucesso</h2>
+      <p style="opacity:.85">Sem impressão, assinatura física ou digitalização manual.</p>
+      <div class="kv">
+        <div class="k">Cliente</div><div>ANA CAROLINA DA SILVA MEDEIROS MOREIRA</div>
+        <div class="k">Account ID</div><div>001V200000Rc0HIIAZ</div>
+        <div class="k">Interação FOCO</div><div>INT-2026-004821 <span class="rf" style="background:#fff;color:#0b3d91">RF12</span></div>
+        <div class="k">Documento</div><div>Termo de Responsabilidade — Formalização (PDF)</div>
+        <div class="k">Data/hora do aceite</div><div>19/08/2026 09:25</div>
+        <div class="k">Status</div><div>✔ Anexado ao histórico do cliente <span class="rf" style="background:#fff;color:#0b3d91">RF16</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2 class="sec">Ganhos da evolução</h2>
+      <div class="status-grid">
+        <div class="st-card"><h5>❌ Elimina fluxo manual</h5><p class="muted" style="font-size:12px">Fim da impressão → assinatura → digitalização → anexação. <span class="rf">RF15</span></p></div>
+        <div class="st-card"><h5>🔁 Múltiplos termos</h5><p class="muted" style="font-size:12px">Vários documentos por atendimento, sem novo protocolo. <span class="rf">RF13</span> <span class="rf">RF14</span></p></div>
+        <div class="st-card"><h5>🧾 Rastreabilidade</h5><p class="muted" style="font-size:12px">Evidências de data, hora e validação por documento. <span class="rf">RF09</span></p></div>
+        <div class="st-card"><h5>⚡ Reuso da base atual</h5><p class="muted" style="font-size:12px">Aproveita infraestrutura do Aceite LGPD. <span class="rf">RF01</span> <span class="rf">RF07</span></p></div>
+      </div>
+    </div>
+
+    <div class="footer-nav">
+      <button class="btn btn-cinza" onclick="go(6)">← Status do atendimento</button>
+      <button class="btn btn-azul" onclick="go(1)">🏠 Voltar à Lista de Clientes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function go(n){
+    document.querySelectorAll('.app').forEach(a=>a.classList.remove('show'));
+    document.getElementById('app'+n).classList.add('show');
+    document.querySelectorAll('.step').forEach(s=>s.classList.toggle('active', s.dataset.go==n));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  document.querySelectorAll('.step').forEach(s=>s.addEventListener('click',()=>go(s.dataset.go)));
+  function doAccept(){document.getElementById('acceptDone').style.display='block';}
+  function showAccept(){alert('Documento aberto no celular do cliente ➜ ao lado, a tela de leitura e aceite.');}
+</script>
+</body>
+</html>

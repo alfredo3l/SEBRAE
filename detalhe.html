@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SEBRAE - Aceite LGPD - Detalhe do Parceiro</title>
+    <title>SEBRAE - TERMOS URC - Detalhe do Parceiro</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome 6 -->
@@ -18,7 +18,7 @@
         <div class="d-flex justify-content-between align-items-center w-100">
             <a class="navbar-brand" href="/">
                 <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
-                <span>Aceite LGPD</span>
+                <span>TERMOS URC</span>
             </a>
             <div class="navbar-right">
                 <div class="user-info" onclick="abrirModalPerfil()" title="Meu perfil">
@@ -73,34 +73,35 @@
                 </button>
                 <button class="btn-editar-parceiro" onclick="abrirModalEdicao()" style="display:none;">
                     <i class="fas fa-edit"></i>
-                    Editar
+                    Editar Cliente
                 </button>
-                <button class="btn-enviar-termo" onclick="enviarTermo()" style="display:none;">
-                    <i class="fas fa-paper-plane"></i>
-                    Enviar Termo
-                </button>
-                <a href="/" class="btn-voltar">
-                    <i class="fas fa-arrow-left"></i>
-                    Voltar
+                <a href="#" class="btn-acompanhamento" id="btn-acompanhamento" title="Acompanhamento do atendimento">
+                    <i class="fas fa-eye"></i>
+                    Acompanhamento
+                </a>
+                <a href="/" class="btn-inicio">
+                    <i class="fas fa-home"></i>
+                    Início
                 </a>
             </div>
         </div>
 
-        <!-- Card - Informações do Parceiro -->
+        <!-- Card - Atendimento em andamento -->
         <div class="info-card">
             <div class="info-card-header">
-                <i class="fas fa-info-circle"></i>
-                Informações do Cliente
+                <i class="fas fa-headset"></i>
+                Atendimento em andamento
             </div>
             <div class="info-card-body">
+                <p class="atendimento-sub">
+                    Interação nº <b id="info-interacao">—</b>
+                    <span class="atendimento-sub-nota">(consumida do FOCO)</span>
+                    &nbsp;•&nbsp; Consultor: <b id="info-consultor">—</b>
+                </p>
                 <div class="info-grid">
                     <div class="info-item">
-                        <label>Nome/Razão Social:</label>
+                        <label>Cliente:</label>
                         <span id="info-nome">-</span>
-                    </div>
-                    <div class="info-item">
-                        <label>Termo Aceito:</label>
-                        <span id="info-termo">-</span>
                     </div>
                     <div class="info-item">
                         <label>CPF:</label>
@@ -110,29 +111,61 @@
                         <label>Account ID:</label>
                         <span id="info-account">-</span>
                     </div>
-                    <div class="info-item">
-                        <label>Telefone:</label>
-                        <span id="info-telefone">-</span>
-                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Card - Validações -->
+        <!-- Card - Seleção de termo/declaração -->
         <div class="info-card">
             <div class="info-card-header">
-                <i class="fas fa-check-double"></i>
-                Validações
+                <i class="fas fa-file-signature"></i>
+                Selecione o termo/declaração a ser gerado
             </div>
-            <div class="validacoes-container" id="validacoes-container">
-                <!-- Carregado dinamicamente -->
+            <div class="info-card-body">
+                <p class="documentos-sub">Não é obrigatório enviar todos — apenas o necessário para este atendimento.</p>
+                <div class="documentos-grid" id="documentos-grid">
+                    <div class="doc-card" onclick="abrirDocumento('termo-lgpd')">
+                        <span class="doc-card-ic doc-card-lock"><i class="fas fa-lock"></i></span>
+                        <h4>Termo LGPD</h4>
+                        <p>Preenchimento 100% automático (FOCO). Sem edição.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('parcelamento-mei')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Parcelamento de Débitos do MEI — Termo de Ciência e Responsabilidade</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('reenquadramento-mei')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Solicitação de Reenquadramento do MEI</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('formalizacao')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Termo de Responsabilidade — Formalização</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('declaracao-responsabilidade')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Declaração de Responsabilidade</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('alteracao')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Termo de Responsabilidade — Alteração</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('parcelamento-pgfn')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Parcelamento de Débitos do MEI — PGFN</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                    <div class="doc-card" onclick="abrirDocumento('parcelamento-mei')">
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Parcelamento de Débitos do MEI</h4>
+                        <p>Requer preenchimento do consultor.</p>
+                    </div>
+                </div>
             </div>
-        </div>
-
-        <!-- Mensagem Informativa -->
-        <div class="info-message" style="display: none;">
-            <i class="fas fa-info-circle"></i>
-            <span></span>
         </div>
 
     </div>
@@ -193,13 +226,24 @@
                         <label for="edit-telefone">
                             <i class="fas fa-phone"></i> Telefone <span class="required">*</span>
                         </label>
-                        <input 
-                            type="text" 
-                            id="edit-telefone" 
+                        <input
+                            type="text"
+                            id="edit-telefone"
                             placeholder="(00)00000-0000"
                             required
                             maxlength="15"
                             oninput="mascaraTelefone(this)"
+                        >
+                    </div>
+                    <div class="modal-form-group">
+                        <label for="edit-email">
+                            <i class="fas fa-envelope"></i> E-mail
+                        </label>
+                        <input
+                            type="email"
+                            id="edit-email"
+                            placeholder="email@exemplo.com"
+                            maxlength="150"
                         >
                     </div>
                     <div class="modal-form-actions" style="justify-content: space-between;">
@@ -218,63 +262,6 @@
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========== MODAL CONFIRMAÇÃO ENVIAR TERMO ========== -->
-    <div class="modal-overlay" id="modal-enviar-termo" style="display: none;">
-        <div class="modal-cadastro-card" style="max-width: 450px;">
-            <div class="modal-cadastro-header" style="background-color: #28a745;">
-                <h3>
-                    <i class="fas fa-paper-plane"></i>
-                    Enviar Termo LGPD
-                </h3>
-                <button class="modal-close-btn" onclick="fecharModalEnviarTermo()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-cadastro-body">
-                <!-- Mensagem de Sucesso -->
-                <div class="cadastro-sucesso" id="envio-sucesso" style="display: none;">
-                    <i class="fas fa-check-circle"></i>
-                    <span id="envio-sucesso-msg">Termo enviado com sucesso!</span>
-                </div>
-                <!-- Mensagem de Erro -->
-                <div class="cadastro-erro" id="envio-erro" style="display: none;">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <span id="envio-erro-msg">Erro ao enviar o termo.</span>
-                </div>
-
-                <div id="envio-confirmacao">
-                    <p style="font-size: 0.95rem; color: #333; margin-bottom: 15px;">
-                        <i class="fas fa-info-circle" style="color: #28a745;"></i>
-                        Deseja enviar o termo LGPD via WhatsApp para:
-                    </p>
-                    <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                        <div style="margin-bottom: 8px;">
-                            <strong style="color: #0056a6; font-size: 0.8rem;">Nome/Razão Social:</strong><br>
-                            <span id="envio-nome" style="font-size: 0.9rem; color: #333;">-</span>
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <strong style="color: #0056a6; font-size: 0.8rem;">CPF:</strong><br>
-                            <span id="envio-cpf" style="font-size: 0.9rem; color: #333;">-</span>
-                        </div>
-                        <div>
-                            <strong style="color: #0056a6; font-size: 0.8rem;">Telefone:</strong><br>
-                            <span id="envio-telefone" style="font-size: 0.9rem; color: #333;">-</span>
-                        </div>
-                    </div>
-                    <div class="modal-form-actions">
-                        <button type="button" class="btn-cancelar" onclick="fecharModalEnviarTermo()">
-                            <i class="fas fa-times"></i> Cancelar
-                        </button>
-                        <button type="button" class="btn-salvar" id="btn-confirmar-envio" onclick="confirmarEnvioTermo()" style="background-color: #28a745;">
-                            <span class="btn-text"><i class="fas fa-paper-plane"></i> Enviar</span>
-                            <span class="spinner" style="display:none;"></span>
-                        </button>
-                    </div>
-                </div>
             </div>
         </div>
     </div>

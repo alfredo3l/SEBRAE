@@ -1672,3 +1672,802 @@ body {
 .btn-visualizar-busca:hover {
     background-color: #0069c0;
 }
+
+/* ============================================
+   TERMOS URC — Seleção de documento (detalhe)
+   ============================================ */
+
+.atendimento-sub {
+    font-size: 0.9rem;
+    color: #4a5b6e;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #eef1f4;
+}
+
+.atendimento-sub b {
+    color: #0056a6;
+}
+
+.atendimento-sub-nota {
+    font-size: 0.78rem;
+    color: #7a8699;
+}
+
+.documentos-sub {
+    font-size: 0.85rem;
+    color: #7a8699;
+    margin: 0 0 14px 0;
+}
+
+.documentos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.doc-card {
+    position: relative;
+    background: #fff;
+    border: 1px solid #dde3ea;
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.doc-card:hover {
+    border-color: #0056a6;
+    box-shadow: 0 4px 14px rgba(0, 86, 166, 0.15);
+    transform: translateY(-2px);
+}
+
+.doc-card h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #213b58;
+    margin: 0 0 6px 0;
+    padding-right: 44px;
+}
+
+.doc-card p {
+    font-size: 0.78rem;
+    color: #7a8699;
+    margin: 0;
+}
+
+.doc-card-ic {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+}
+
+.doc-card-lock {
+    background: #eef4ff;
+    color: #0056a6;
+}
+
+.doc-card-edit {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* ============================================
+   TERMOS URC — Página de documento
+   ============================================ */
+
+.documento-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.doc-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 16px;
+}
+
+.doc-form-full {
+    grid-column: 1 / -1;
+}
+
+.doc-form-group label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.8rem;
+    margin-bottom: 5px;
+    color: #34506e;
+}
+
+.doc-form-group input[type="text"] {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid #ccd3db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+
+.doc-form-group input[type="text"]:focus {
+    outline: none;
+    border-color: #0056a6;
+    box-shadow: 0 0 0 3px rgba(0, 86, 166, 0.1);
+}
+
+.doc-form-group textarea {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid #ccd3db;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.doc-form-group textarea:focus {
+    outline: none;
+    border-color: #0056a6;
+    box-shadow: 0 0 0 3px rgba(0, 86, 166, 0.1);
+}
+
+.campo-auto {
+    background-color: #f0f7f0 !important;
+    border-color: #bcdcbc !important;
+    color: #2c3e50;
+}
+
+.tag-auto {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #1e7e34;
+    background: #d4edda;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.tag-edit {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #856404;
+    background: #fff3cd;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.doc-opcao {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.83rem;
+    font-weight: 400 !important;
+    color: #2c3e50;
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+.doc-opcao input {
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.doc-checklist {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 16px;
+}
+
+.doc-debito-linha {
+    display: grid;
+    grid-template-columns: 1fr 130px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.doc-debito-data {
+    padding: 6px 9px !important;
+    font-size: 0.8rem !important;
+}
+
+.doc-dasn-linha {
+    display: grid;
+    grid-template-columns: 70px 1fr 100px 120px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.doc-dasn-linha input[type="text"] {
+    padding: 6px 9px;
+    font-size: 0.8rem;
+}
+
+.doc-dasn-ret {
+    margin-bottom: 0;
+    font-size: 0.78rem !important;
+}
+
+.doc-preview {
+    background: #fff;
+    border: 1px solid #dde3ea;
+    border-radius: 8px;
+    padding: 22px;
+    font-size: 0.8rem;
+    line-height: 1.7;
+    max-height: 480px;
+    overflow: auto;
+    color: #2c3e50;
+}
+
+.doc-preview h3 {
+    font-size: 0.95rem;
+    text-align: center;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #213b58;
+}
+
+.doc-preview p {
+    margin-bottom: 10px;
+    text-align: justify;
+}
+
+.doc-lacuna {
+    color: #7a8699;
+    letter-spacing: 1px;
+}
+
+.doc-citacao {
+    padding-left: 18px;
+    border-left: 3px solid #dde3ea;
+    color: #4a5b6e;
+    font-style: italic;
+}
+
+.doc-assinatura {
+    margin-top: 26px;
+    text-align: center;
+}
+
+.doc-assinatura-espaco {
+    margin-top: 18px;
+}
+
+.doc-assinatura-label {
+    color: #7a8699;
+    font-size: 0.75rem;
+}
+
+.doc-assinatura-nota {
+    font-style: italic;
+}
+
+.documento-acoes {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.documento-acoes .btn-cancelar,
+.documento-acoes .btn-salvar {
+    flex: 1;
+    justify-content: center;
+}
+
+.documento-aviso {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    background: #eef4ff;
+    border-left: 4px solid #0056a6;
+    color: #2c4056;
+}
+
+.documento-aviso-sucesso {
+    background: #d4edda;
+    border-left-color: #28a745;
+    color: #155724;
+}
+
+.documento-aviso-erro {
+    background: #f8d7da;
+    border-left-color: #dc3545;
+    color: #721c24;
+}
+
+@media (max-width: 900px) {
+    .documento-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .doc-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .doc-checklist {
+        grid-template-columns: 1fr;
+    }
+
+    .doc-dasn-linha {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ============================================
+   TERMOS URC — Etapa Enviar via WhatsApp
+   ============================================ */
+
+.validacoes-envio {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.validacao-badge-warn {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffe08a;
+}
+
+.envio-card {
+    max-width: 560px;
+    margin: 0 auto 16px auto;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.envio-card-header {
+    background: #25d366;
+    color: #fff;
+    padding: 15px 20px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.envio-card-body {
+    padding: 22px;
+}
+
+.envio-pergunta {
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+    color: #2c3e50;
+}
+
+.envio-pergunta i {
+    color: #0056a6;
+    margin-right: 4px;
+}
+
+.envio-dados {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 8px 14px;
+    background: #f6f8fa;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 0.85rem;
+    color: #2c3e50;
+}
+
+.envio-dados-k {
+    color: #7a8699;
+    font-weight: 600;
+}
+
+.envio-acoes {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.envio-acoes .btn-cancelar {
+    flex: 1;
+    justify-content: center;
+}
+
+.btn-envio-wpp {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: #25d366;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-envio-wpp:hover {
+    background-color: #1fb857;
+}
+
+.btn-envio-wpp:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.btn-envio-wpp .btn-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.envio-nota {
+    max-width: 560px;
+    margin: 0 auto;
+}
+
+@media (max-width: 600px) {
+    .envio-dados {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .envio-dados-k {
+        margin-top: 8px;
+    }
+}
+
+/* ============================================
+   TERMOS URC — Lista de Clientes (Tela 1)
+   ============================================ */
+
+/* Badge FOCO (antes era estilo inline em app.js) */
+.badge-foco {
+    display: inline-block;
+    margin-left: 0;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #004085;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ============================================
+   TERMOS URC — Acompanhamento do Atendimento (Tela 6)
+   ============================================ */
+
+.acomp-cliente {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.acomp-cliente-nome {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    margin: 0 0 4px 0;
+}
+
+.acomp-btn-novo {
+    text-decoration: none;
+}
+
+.acomp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.acomp-muted {
+    color: #7a8699;
+    font-size: 0.78rem;
+}
+
+/* Cards de documentos do atendimento */
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.st-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.st-card:hover {
+    box-shadow: 0 3px 10px rgba(0, 86, 166, 0.12);
+}
+
+.st-card h5 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #213b58;
+    margin: 0 0 8px 0;
+    line-height: 1.3;
+    /* Reserva a altura do maior título (3 linhas) para o badge de status
+       ficar alinhado entre os cards, independente do tamanho do nome */
+    min-height: calc(1.3em * 3);
+}
+
+.st-card-aceito {
+    border-color: #b6dfc0;
+    background: #f6fff8;
+}
+
+.st-card-enviado {
+    border-color: #ffe08a;
+    background: #fffdf5;
+}
+
+.st-card-recusado {
+    border-color: #f5c2c7;
+    background: #fff5f5;
+}
+
+.st-card-selecionado {
+    border-color: #0056a6;
+    box-shadow: 0 0 0 2px rgba(0, 86, 166, 0.2);
+}
+
+.st-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.78rem;
+    padding: 5px 0;
+    border-top: 1px dashed #eef1f4;
+    margin-top: 5px;
+    color: #2c3e50;
+}
+
+.badge-pdf {
+    display: inline-block;
+    background: #e7f1ff;
+    color: #0b5ed7;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 12px;
+    margin-left: 4px;
+}
+
+/* Timeline de evidências */
+.timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.timeline li {
+    position: relative;
+    padding: 0 0 18px 26px;
+    font-size: 0.85rem;
+}
+
+.timeline li::before {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #28a745;
+}
+
+.timeline li::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    top: 17px;
+    bottom: 0;
+    width: 2px;
+    background: #cfe0d0;
+}
+
+.timeline li:last-child::after {
+    display: none;
+}
+
+.timeline li.pending::before {
+    background: #cbd3dc;
+}
+
+.timeline li.pending {
+    color: #7a8699;
+}
+
+.timeline li.recusa::before {
+    background: #dc3545;
+}
+
+.timeline b {
+    display: block;
+    color: #213b58;
+}
+
+.timeline li.pending b {
+    color: #7a8699;
+}
+
+.timeline span {
+    font-size: 0.75rem;
+    color: #7a8699;
+}
+
+/* Tratamento de recusa */
+.acomp-recusa-box {
+    background: #fff5f5;
+    border: 1px solid #f5c2c7;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+
+.acomp-recusa-nota {
+    font-size: 0.78rem;
+    color: #721c24;
+    margin: 8px 0 0 0;
+}
+
+.acomp-sem-recusa {
+    background: #f6fff8;
+    border: 1px solid #b6dfc0;
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 0.85rem;
+    color: #155724;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .acomp-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Coluna Documento da lista: largura fixa com reticências (nome completo no tooltip) */
+.table-custom td.cell-documento {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Botões de ação nos cards do Acompanhamento (retomar/reenviar) */
+.btn-card-enviar,
+.btn-card-reenviar {
+    width: 100%;
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+
+.btn-card-enviar {
+    background-color: #25d366;
+    color: #fff;
+}
+
+.btn-card-reenviar {
+    background-color: #fff;
+    color: #0056a6;
+    border: 1px solid #0056a6;
+}
+
+.btn-card-enviar:hover,
+.btn-card-reenviar:hover {
+    filter: brightness(0.95);
+}
+
+/* Botão "Acompanhamento" na tela de seleção de documento (detalhe) */
+.btn-acompanhamento {
+    background-color: #fff;
+    color: #0056a6;
+    border: 1px solid #0056a6;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.btn-acompanhamento:hover {
+    background-color: #eef4ff;
+    color: #0056a6;
+}
+
+/* Botão "Salvar contato do cliente" no formulário do termo */
+.doc-form-rodape {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #eef1f4;
+}
+
+.btn-salvar-contato {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: #fff;
+    color: #0056a6;
+    border: 1px solid #0056a6;
+    border-radius: 6px;
+    padding: 9px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-salvar-contato:hover {
+    background-color: #eef4ff;
+}
+
+.btn-salvar-contato:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.btn-salvar-contato .btn-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Letra de resposta do documento no WhatsApp (ex.: cliente responde 1A / 2A) */
+.badge-codigo {
+    display: inline-block;
+    background: #eef4ff;
+    color: #0056a6;
+    border: 1px solid #cfe0ff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 12px;
+    margin-left: 4px;
+    white-space: nowrap;
+}

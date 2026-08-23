@@ -1,6 +1,8 @@
-# SEBRAE - Aceite LGPD
+# SEBRAE - TERMOS URC
 
-Sistema de gestão de termos LGPD para parceiros do SEBRAE. Permite cadastro, consulta, envio de termo via WhatsApp, integração com Salesforce/FOCO e gestão de usuários com controle de acesso por perfis.
+Sistema de gestão de **termos e declarações URC** para clientes do SEBRAE/MS. Permite cadastro e consulta de clientes, preenchimento e geração dos termos, envio e coleta do aceite via WhatsApp, anexação automática do documento assinado no Salesforce/FOCO e gestão de usuários com controle de acesso por perfis.
+
+O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos termos por atendimento**: Termo LGPD, Parcelamento de Débitos do MEI (RFB e PGFN), Reenquadramento SIMEI, Termo de Responsabilidade (Formalização e Alteração) e Declaração de Responsabilidade (DASN).
 
 ---
 
@@ -26,34 +28,46 @@ Sistema de gestão de termos LGPD para parceiros do SEBRAE. Permite cadastro, co
 - **Login** com e-mail e senha via Supabase Auth.
 - **Perfis de usuário** na tabela `perfis_usuarios` com **roles**:
   - **admin**: acesso total, incluindo gestão de usuários.
-  - **operador**: pode listar, cadastrar, editar, excluir parceiros e enviar termo LGPD; não acessa gestão de usuários.
+  - **operador**: pode listar, cadastrar, editar e excluir clientes, gerar e enviar termos; não acessa gestão de usuários.
   - **visualizador**: apenas visualização (lista e detalhe); botões de editar, excluir e enviar termo ficam ocultos.
 - **Controle de acesso**: usuários inativos são deslogados ao tentar acessar; redirecionamento para login quando não autenticado.
 - **Cache de perfil** no `sessionStorage` para preencher nome, foto e role na navbar sem “flash” de “Carregando…” ao navegar.
 - **Logout** com limpeza de cache e redirecionamento para a página de login.
 
-### Listagem de parceiros
+### Lista de clientes (`index.html`)
 
+- **Uma linha por documento** (não por cliente): o cliente com três termos aparece em três linhas.
 - **Tabela paginada** com quantidade configurável de registros por página (10, 25, 50).
 - **Filtros**:
-  - Pesquisa textual (CPF, nome, telefone, ID).
-  - Status do termo: Todos, Aceito, Não aceito, Recusado.
-  - Telefone: Todos ou “Sem telefone”.
-- **Colunas**: CPF, Nome/Razão Social, Telefone, Account ID (Salesforce), Termo Aceito (com badge FOCO quando aplicável), Data Envio, Data Aceite, Data Recusa, Data Alteração, Ações.
-- **Botão “Ver termo PDF”** na coluna do termo quando existir PDF no bucket `TermosAceite` do Supabase Storage (nome: `TermosAceite_<CPF_sem_pontuacao>.pdf`).
-- **Clique na linha** ou no botão de visualizar leva à página de detalhe do parceiro.
+  - Pesquisa textual (CPF, nome, telefone, Account ID, nome do documento).
+  - Status: Gerado, Enviado, Aceito, Recusado (o cliente sem documento enviado aparece como **Pendente**).
+  - Tipo de documento (alimentado pelo catálogo `TERMOS_URC`).
+- **Colunas**: CPF, Nome/Razão Social, Telefone, Account ID, **Documento**, **Status** (+ PDF quando houver), Data Envio, Data Aceite, **FOCO**, Ações.
+- **Botão “Ver termo PDF”** quando existir arquivo no bucket `TermosAceite` (link assinado).
+- **Atualização em tempo real**: o aceite/recusa e a integração no FOCO são gravados pelo n8n; a tela se atualiza sozinha, **preservando filtros e página**.
+- **Clique na linha** ou no ícone de visualizar leva ao **acompanhamento do atendimento**.
 
-### Página de detalhe do parceiro
+### Seleção de documento (`detalhe.html`)
 
-- Exibição de: nome, CPF, Account ID, telefone, status do termo (Sim/Não/Recusado, badge FOCO quando houver), datas de envio, aceite e recusa.
-- **Validações exibidas**: CPF válido, Cadastrado no FOCO, Nome válido, Telefone válido, Status do termo LGPD.
-- **Mensagem contextual** conforme situação (pode receber termo, já aceitou, recusou, etc.).
-- **Navegação** “Anterior” / “Próximo” entre parceiros (ordem por `created_at`).
-- **Abrir termo em PDF** (link assinado do Storage, quando existir).
-- **Botões (conforme permissão)**:
-  - **Editar**: abre modal para alterar telefone; ao salvar, atualiza no Supabase e sincroniza o campo Phone do Contact no Salesforce/FOCO (via API), quando houver `id_contato_salesforce` ou quando for possível obter o Contact Id por AccountId/CPF.
-  - **Enviar termo**: abre modal de confirmação e dispara webhook n8n para envio do termo LGPD via WhatsApp; em sucesso, grava `data_envio` no parceiro.
-  - **Excluir**: modal de confirmação e exclusão do registro no Supabase; em sucesso, redireciona para a lista.
+- Card **“Atendimento em andamento”**: nº da interação (`CaseNumber` do último Case do cliente no FOCO) e consultor logado.
+- **Grade de cards** com os termos disponíveis; clicar abre o formulário do termo escolhido.
+- **Botões (conforme permissão)**: Buscar Cliente, **Editar Cliente** (telefone e e-mail, com sincronização no FOCO), Acompanhamento, Excluir e **Início**.
+
+### Preenchimento e envio do termo (`documento.html`)
+
+- **Formulário por termo** (catálogo `TERMOS_URC`): base comum (nome, CPF, CNPJ, telefone, e-mail, Account ID, nº da interação, data) + campos específicos do modelo oficial + observações complementares.
+- **Dados vindos do FOCO**: CPF, telefone, e-mail e **CNPJ** (`Account.CNPJ__c`) chegam preenchidos e continuam **editáveis**; botão **“Salvar contato do cliente”** grava telefone/e-mail no cadastro e sincroniza no FOCO sem sair da tela.
+- **Pré-visualização** com a redação oficial do termo, atualizada enquanto se digita. Trechos de qualificação (CNPJ, e-mail, telefone, RG) **somem quando o dado não existe**, em vez de deixar lacunas.
+- **“Gerar e prosseguir”**: grava o documento (status `gerado`, campos preenchidos e HTML renderizado) e abre a etapa de envio, com validações (CPF, FOCO, nome, telefone, e-mail, documento gerado).
+- **“Enviar”**: dispara o webhook n8n único (`/webhook/TERMOS-URC`), que gera o PDF e envia pelo WhatsApp. O documento recebe uma **letra de resposta** (A, B, C…) e o consultor vê qual resposta o cliente deve dar.
+
+### Acompanhamento do atendimento (`acompanhamento.html`)
+
+- **Cards de todos os documentos** do cliente, coloridos por status, com datas de envio/aceite, letra de resposta e situação no FOCO (“Integrado ✓” / “aguardando aceite”).
+- **Timeline de evidências** por documento: gerado (com consultor), enviado via WhatsApp, aceito/recusado e integração no FOCO.
+- **Tratamento de recusa**: lista os documentos recusados ou informa que não há nenhum.
+- **Retomada**: documentos com status Gerado têm botão “Enviar” (e Enviado, “Reenviar”), que reabre o termo já preenchido.
+- Também **atualiza em tempo real**, mantendo o card selecionado.
 
 ### Cadastro de parceiros
 
@@ -87,13 +101,16 @@ Sistema de gestão de termos LGPD para parceiros do SEBRAE. Permite cadastro, co
 ### Integração Salesforce/FOCO
 
 - **Query (SOQL)** via proxy: `GET /api/sebrae/query?q=<SOQL>` — usa credenciais OAuth (client_credentials) configuradas em variáveis de ambiente.
-- **Atualização de telefone do Contact**: `PATCH /api/sebrae/contact/:id` com body `{ "Phone": "(00)00000-0000" }`.
+- **Atualização de contato**: `PATCH /api/sebrae/contact/:id` com body `{ "Phone": "(00)00000-0000" }` e/ou `{ "Email": "nome@dominio" }`.
+- **Consultas usadas**: Contact por CPF (traz `Account.Name` e `Account.CNPJ__c`) e último Case do cliente (nº da interação).
+- **Anexação do documento assinado**: feita pelo fluxo n8n do aceite (`ContentVersion` → `ContentDocumentLink` no Case do atendimento); ao concluir, marca `documentos.salvo_foco` e acende a coluna FOCO na lista.
 - **Token** em cache em memória (renovado conforme `expires_in`) nas serverless functions e no servidor de desenvolvimento local.
 
-### Envio do termo LGPD via WhatsApp
+### Envio e aceite dos termos via WhatsApp
 
-- Envio realizado por **webhook n8n** (URL configurada no front-end). Payload: `nome_razao_social`, `cpf`, `telefone`.
-- Após sucesso da chamada, o sistema atualiza o campo `data_envio` do parceiro no Supabase.
+- **Envio**: webhook n8n único `POST /webhook/TERMOS-URC`, com os dados do cliente, do consultor, da interação e do documento (incluindo o HTML renderizado do termo). O fluxo gera o PDF (Gotenberg) e envia pela Evolution API; em sucesso, o documento vira `enviado` com `data_envio`.
+- **Aceite/recusa**: como o cliente pode ter vários termos aguardando resposta, cada documento enviado recebe uma **letra** e o cliente responde **`1A`** (aceito) ou **`2A`** (não aceito). O fluxo `TERMOS-URC-ASSINADOS` interpreta variações (`1a`, `A1`, “aceito B”), pede esclarecimento quando a resposta é ambígua e orienta o cliente quando recebe áudio, imagem, emoji ou texto aleatório — **nunca adivinha** a qual documento a resposta se refere.
+- **Documento assinado**: PDF com bloco de evidências e **assinatura digital SHA-256** única por documento (calculada sobre id do documento, nome, CPF, nome do termo e data-hora do aceite), salvo no bucket `TermosAceite` e anexado ao Case no FOCO.
 
 ---
 
@@ -112,7 +129,7 @@ Sistema de gestão de termos LGPD para parceiros do SEBRAE. Permite cadastro, co
 
 O sistema usa dois conjuntos de configuração:
 
-1. **Supabase** (front-end): URL e chave anônima no arquivo `js/supabase-config.js` (não versionado).
+1. **Supabase** (front-end): URL e chave anônima no arquivo `js/supabase-config.js` — **versionado** desde o commit `57deebb`, porque o deploy estático da Vercel precisa dele no repositório. A chave ali é a *anon key*, pública por design e protegida pelas policies de RLS; nenhuma chave de serviço deve entrar nesse arquivo.
 2. **API SEBRAE (FOCO)** (backend/proxy): variáveis no `.env` (local) ou no painel da Vercel (produção).
 
 Resumo:
@@ -208,6 +225,7 @@ As serverless functions ficam em `api/` e são expostas automaticamente pela Ver
 | cpf                    | text      | CPF (único) |
 | nome_razao_social      | text      | Nome ou razão social |
 | telefone               | text      | Telefone |
+| email                  | text      | E-mail do cliente (editável no sistema; sincroniza `Contact.Email` no FOCO) |
 | id_salesforce          | text      | Account Id no Salesforce/FOCO |
 | id_contato_salesforce  | text      | Contact Id no Salesforce/FOCO (sincronização de telefone) |
 | termo_aceito           | boolean   | Se aceitou o termo LGPD |
@@ -220,6 +238,35 @@ As serverless functions ficam em `api/` e são expostas automaticamente pela Ver
 | data_recusa            | timestamptz | Data/hora da recusa |
 | created_at             | timestamptz | Criação do registro |
 | updated_at             | timestamptz | Última atualização |
+
+### Tabela `documentos` (Termos URC)
+
+Múltiplos termos/documentos por parceiro — 1 linha por documento (o `parceiros` permanece como cadastro do cliente, 1 linha por CPF). Migração: `supabase_create_documentos.sql`.
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| id | uuid | PK (default: `gen_random_uuid()`) |
+| parceiro_id | uuid | FK → `parceiros.id` (on delete cascade) |
+| tipo_documento | text | Slug do catálogo (`termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`, `formalizacao`, `alteracao`, `declaracao-responsabilidade`) |
+| nome_documento | text | Título exibido (ex.: "Termo LGPD") |
+| status | text | `gerado` \| `enviado` \| `aceito` \| `nao_aceito` \| `recusado` |
+| salvo_foco | boolean | Documento anexado no FOCO (badge FOCO na lista) |
+| arquivo_path | text | Caminho do PDF no bucket `TermosAceite` |
+| case_id_salesforce / case_number | text | Interação (Case) vinculada no FOCO |
+| content_document_id | text | ContentDocumentId do anexo no FOCO |
+| consultor | text | Nome do usuário que gerou o documento |
+| dados_formulario | jsonb | Campos preenchidos pelo consultor na geração |
+| html_documento | text | HTML do termo renderizado (usado no PDF do envio e do aceite) |
+| codigo_resposta | text | Letra do documento na conversa do WhatsApp (`1A` / `2A`) |
+| resposta_texto / respondido_em | text / timestamptz | Resposta do cliente e quando chegou |
+| whatsapp_message_id | text | Id da mensagem do WhatsApp que trouxe a resposta |
+| assinatura_digital | text | SHA-256 do aceite (único por documento) |
+| data_envio / data_aceite / data_recusa | timestamptz | Datas do ciclo |
+| created_at / updated_at | timestamptz | Auditoria |
+
+Índice único parcial `(parceiro_id, codigo_resposta) where status = 'enviado'` garante que duas letras iguais não fiquem pendentes ao mesmo tempo. A RPC **`preparar_envio_documento(uuid)`** atribui a primeira letra livre e marca o documento como enviado, recusando documento já respondido. A view **`vw_documentos_pendentes`** (usada pelo n8n) expõe `telefone_digitos` e `cpf_digitos` — só números, porque o PostgREST não casa valores com parênteses e hífen.
+
+RLS igual à de `parceiros` (SELECT/INSERT autenticado; UPDATE/DELETE via `pode_editar_parceiros()`). **Obs.:** o status do Termo LGPD exibido na lista ainda é derivado das flags de `parceiros` (os fluxos n8n gravam lá); `documentos` é a fonte para os demais termos.
 
 ### Tabela `perfis_usuarios`
 
@@ -240,30 +287,38 @@ Campos utilizados no sistema: `id` (uuid, igual ao `id` do Auth), `email`, `nome
 ## Estrutura do projeto
 
 ```
-sebrae-aceite-lgpd/
+sebrae-termos-urc/
 ├── api/
 │   └── sebrae/
 │       ├── query.js              # GET ?q=SOQL — consulta Salesforce/FOCO
 │       └── contact/
-│           └── [id].js           # PATCH — atualiza Phone do Contact
+│           └── [id].js           # PATCH — atualiza Phone e/ou Email do Contact
 ├── css/
 │   └── style.css
 ├── img/
 │   ├── Logo_Sebrae.png
 │   └── Logo_Sebrae_Branco.png
 ├── js/
-│   ├── app.js                    # Lista, detalhe, cadastro, edição, exclusão, envio termo, busca FOCO
+│   ├── app.js                    # Lista, seleção de documento, cadastro/edição, busca FOCO, tempo real
+│   ├── documentos.js             # Catálogo TERMOS_URC, formulários, pré-visualização e envio
+│   ├── acompanhamento.js         # Cards, timeline de evidências e recusas do atendimento
 │   ├── auth.js                   # Autenticação, perfis, navbar, logout
 │   ├── perfil.js                 # Modal de perfil e upload de foto
 │   ├── usuarios.js               # Gestão de usuários (admin)
 │   ├── sebrae-api.js             # Cliente da API SEBRAE (query, PATCH contact, helpers)
 │   ├── supabase-config.example.js
-│   └── supabase-config.js        # Não versionado
-├── index.html                    # Lista de parceiros
-├── detalhe.html                  # Detalhe do parceiro
+│   └── supabase-config.js        # Configuração do Supabase (URL + anon key)
+├── index.html                    # Lista de clientes/documentos
+├── detalhe.html                  # Seleção do documento a gerar
+├── documento.html                # Formulário do termo + pré-visualização + envio
+├── acompanhamento.html           # Acompanhamento do atendimento (status e evidências)
 ├── login.html
 ├── usuarios.html                 # Gestão de usuários (admin)
 ├── dev.js                        # Servidor local (estático + /api/sebrae)
+├── docs/                         # Modelos oficiais dos termos, POC e integração FOCO
+├── fluxos/                       # Espelho e histórico dos fluxos n8n do projeto
+├── Claude/                       # Contexto do projeto para o assistente (CLAUDE.md e skills)
+├── supabase_*.sql                # Migrações aplicadas manualmente no Supabase
 ├── serve.json                    # Config do serve (fallback)
 ├── vercel.json                   # Config do deploy Vercel
 ├── package.json
@@ -281,13 +336,13 @@ sebrae-aceite-lgpd/
 
 ```bash
 git clone <url-do-repositorio>
-cd sebrae-aceite-lgpd
+cd SEBRAE
 npm install
 ```
 
 ### 2. Supabase
 
-Crie e preencha `js/supabase-config.js` a partir de `js/supabase-config.example.js` com `SUPABASE_URL` e `SUPABASE_ANON_KEY` (veja [Configuração Supabase](#configuração-supabase)).
+O arquivo `js/supabase-config.js` já vem no repositório apontando para o projeto em uso. Para apontar a outro projeto Supabase, edite-o (modelo em `js/supabase-config.example.js`) com `SUPABASE_URL` e `SUPABASE_ANON_KEY` — veja [Configuração Supabase](#configuração-supabase).
 
 ### 3. Variáveis da API SEBRAE
 

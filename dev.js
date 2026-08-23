@@ -142,10 +142,15 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ error: 'Body JSON inválido.' }));
                 return;
             }
-            const phone = body.Phone;
-            if (phone === undefined || phone === null) {
+            // Aceita Phone e/ou Email; ao menos um é obrigatório
+            // (mesma lógica de api/sebrae/contact/[id].js — replicar mudanças)
+            const campos = {};
+            if (body.Phone !== undefined && body.Phone !== null) campos.Phone = String(body.Phone);
+            if (body.Email !== undefined && body.Email !== null) campos.Email = String(body.Email);
+
+            if (Object.keys(campos).length === 0) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Campo "Phone" é obrigatório no body.' }));
+                res.end(JSON.stringify({ error: 'Informe "Phone" e/ou "Email" no body.' }));
                 return;
             }
 
@@ -158,7 +163,7 @@ const server = http.createServer(async (req, res) => {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ Phone: String(phone) })
+                    body: JSON.stringify(campos)
                 });
 
                 if (!sfResp.ok) {

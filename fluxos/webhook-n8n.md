@@ -1,0 +1,107 @@
+# Webhooks dos Termos URC (n8n)
+
+| Etapa | Webhook | Fluxo |
+|---|---|---|
+| **Envio** do documento (sistema → cliente) | `POST /webhook/TERMOS-URC` | `[Termo URC - Envio sem assinar]` (`Hqfoa19HyX4QFOqW`) |
+| **Resposta** do cliente (WhatsApp → sistema) | `POST /webhook/TERMOS-URC-ASSINADOS` | `[Termo URC - Assinado]` (`7ITLaIB5rSc7EoTd`) |
+
+> ⚠️ A Evolution API ainda envia as respostas para o webhook do fluxo antigo
+> (`/webhook/ec9aeb71-…`, `[Termo LGPD - Assinado]`). Ver "Ativação" em
+> `fluxos/[Termo URC - Assinado]/README.md`.
+
+## 1. Envio
+
+```
+POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC
+```
+
+- **Fluxo**: `[Termo URC - Envio sem assinar]` (id `Hqfoa19HyX4QFOqW`, ativo) — cópia do fluxo do LGPD, em ajuste.
+- **Chamado por**: `confirmarEnvioDocumento()` → `enviarDocumentoWebhook()` em `js/documentos.js`.
+- **Todos os termos** passam por aqui, inclusive o `termo-lgpd` (o webhook antigo `/fba3c3cd-...` não é mais chamado pelo front).
+- Em sucesso: `documentos.status = 'enviado'` + `data_envio`; para o LGPD, também grava `parceiros.data_envio`.
+
+## Payload enviado
+
+Formato híbrido: os campos da **raiz** mantêm compatibilidade com o fluxo atual
+(que lê `body.nome_razao_social`, `body.cpf`, `body.telefone` e busca o parceiro
+no Supabase pelo telefone); os blocos aninhados trazem o resto para o fluxo usar
+conforme for evoluindo.
+
+```jsonc
+{
+  "nome_razao_social": "ALFREDO ANTONIO DE OLIVEIRA",
+  "cpf": "009.852.911-09",
+  "telefone": "(67)99245-1961",
+  "email": "cliente@exemplo.com",
+
+  "documento": {
+    "id": "<uuid do registro em public.documentos>",
+    "tipo": "formalizacao",              // slug do catálogo TERMOS_URC
+    "nome": "Termo de Responsabilidade — Formalização",
+    "html": "<h3>TERMO ...</h3><p>...",  // termo já preenchido, pronto p/ PDF
+    "campos": { "nome": "...", "cpf": "...", "observacoes": "...", "...": "..." }
+  },
+
+  "cliente": {
+    "id": "<uuid em public.parceiros>",
+    "nome_razao_social": "...",
+    "cpf": "...",
+    "cnpj": "...",
+    "telefone": "...",
+    "email": "...",
+    "account_id": "001V2000014Ac3QIAS",   // Account no FOCO
+    "contact_id": "003V200000y9CT5IAM"    // Contact no FOCO
+  },
+
+  "interacao": {
+    "case_id": "500V200001IMvmbIAD",      // Id do Case no FOCO
+    "case_number": "31344760"             // nº exibido como "Interação"
+  },
+
+  "consultor": "Administrador SEBRAE",
+  "enviado_em": "2026-08-23T15:12:00.000Z"
+}
+```
+
+## Tipos de documento (`documento.tipo`)
+
+`termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`,
+`formalizacao`, `alteracao`, `declaracao-responsabilidade`.
+
+## 2. Resposta do cliente (aceite/recusa)
+
+```
+POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-ASSINADOS
+```
+
+Recebe o **evento da Evolution API** (não é o sistema que chama). O fluxo:
+
+1. normaliza o telefone do `data.key.remoteJid` → formato `(DD)XXXXX-XXXX`;
+2. busca os documentos aguardando resposta na view **`vw_documentos_pendentes`**;
+3. interpreta a mensagem (`data.message.conversation`) no nó `Identifica Documento`.
+
+**Como o cliente responde** — cada documento enviado tem uma **letra** (`documentos.codigo_resposta`,
+atribuída pela RPC `preparar_envio_documento` e enviada em `documento.codigo`):
+
+| Resposta | Efeito |
+|---|---|
+| `1A` / `1 A` / `A1` / `aceito A` | aceita o documento da letra A |
+| `2A` / `2 A` / `A2` / `nao B` | recusa o documento da letra B |
+| `1` ou `2` com **um único** pendente | resolve esse documento (compatível com o LGPD) |
+| `1` ou `2` com **vários** pendentes | o bot responde listando os documentos e suas letras; nada é gravado |
+| letra inexistente (`1Z`), formato errado (`3A`, `11B`) ou texto livre (`bom dia`, emoji) | o bot orienta com a lista e o formato correto; nada é gravado |
+
+Variações de digitação absorvidas automaticamente: minúsculas (`1a`), espaços (`1 a`),
+pontuação (`1-a`, `1.A`), asteriscos (`*1A*`) e ordem invertida (`a1`). Frases livres
+("quero aceitar o termo") **não** são interpretadas — o cliente recebe a orientação —
+porque deduzir intenção de texto livre poderia registrar um aceite indevido.
+
+**Gravações**: `documentos` (`aceito`/`recusado` + datas + `arquivo_path` + `assinatura_digital` +
+`resposta_texto` + `whatsapp_message_id`); `parceiros` e FOCO **apenas** quando o documento é o Termo LGPD.
+
+## Próximos ajustes
+
+1. **Apontar a Evolution API** para `/webhook/TERMOS-URC-ASSINADOS` e desativar `[Termo LGPD - Assinado]`.
+2. Upload do PDF assinado no FOCO (`ContentVersion` + `ContentDocumentLink` na interação/Case) e `salvo_foco = true`.
+3. Migrar a fonte de verdade do LGPD de `parceiros` para `documentos` (hoje a lista deriva das flags).
+4. Tirar a anon key hardcoded do nó `Envio Documento Supabase`.

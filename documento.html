@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEBRAE - TERMOS URC - Documento</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- CSS Customizado -->
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+
+    <!-- ========== HEADER / NAVBAR ========== -->
+    <nav class="navbar-custom">
+        <div class="d-flex justify-content-between align-items-center w-100">
+            <a class="navbar-brand" href="/">
+                <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
+                <span>TERMOS URC</span>
+            </a>
+            <div class="navbar-right">
+                <div class="user-info" onclick="abrirModalPerfil()" title="Meu perfil">
+                    <div class="navbar-avatar-placeholder" id="navbar-avatar-wrap">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <span>Carregando...</span>
+                </div>
+                <div class="navbar-dropdown-wrapper">
+                    <button class="btn-menu" title="Menu" onclick="toggleMenuDropdown(event)">
+                        <i class="fas fa-ellipsis-vertical"></i>
+                    </button>
+                    <div class="navbar-dropdown" id="navbar-dropdown" style="display:none;">
+                        <div class="navbar-dropdown-section link-usuarios" style="display:none;">
+                            <div class="navbar-dropdown-label">Administração</div>
+                            <a href="usuarios" class="navbar-dropdown-item item-admin">
+                                <i class="fas fa-users-cog"></i>
+                                Gestão de Usuários
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <a href="#" class="btn-sair">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sair
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ========== CONTEÚDO PRINCIPAL ========== -->
+    <div class="main-container">
+
+        <!-- Cabeçalho -->
+        <div class="detail-header">
+            <h2 class="detail-name">
+                <i class="fas fa-file-pen"></i>
+                <span id="documento-titulo">Editar e Preencher Documento</span>
+            </h2>
+            <div class="detail-actions">
+                <a href="#" class="btn-voltar" id="btn-trocar-documento">
+                    <i class="fas fa-arrow-left"></i>
+                    Trocar documento
+                </a>
+                <a href="/" class="btn-inicio">
+                    <i class="fas fa-home"></i>
+                    Início
+                </a>
+            </div>
+        </div>
+
+        <!-- Grid: formulário + pré-visualização -->
+        <div class="documento-grid" id="documento-edicao">
+
+            <!-- Coluna esquerda: formulário -->
+            <div class="info-card">
+                <div class="info-card-header">
+                    <i class="fas fa-pen-to-square"></i>
+                    <span id="documento-form-titulo">Documento</span>
+                </div>
+                <div class="info-card-body">
+                    <p class="documentos-sub">Dados recuperados automaticamente do cadastro / FOCO. Campos com ✏️ são complementados pelo consultor.</p>
+                    <form id="documento-form" onsubmit="return false;">
+                        <div id="documento-form-container">
+                            <!-- Campos gerados por js/documentos.js -->
+                        </div>
+                    </form>
+                    <div class="doc-form-rodape">
+                        <button class="btn-salvar-contato" id="btn-salvar-contato" type="button" title="Salvar telefone e e-mail no cadastro do cliente (e no FOCO)">
+                            <span class="btn-text"><i class="fas fa-address-card"></i> Salvar contato do cliente</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                        <div class="documento-aviso" id="contato-aviso" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna direita: pré-visualização -->
+            <div class="info-card">
+                <div class="info-card-header">
+                    <i class="fas fa-eye"></i>
+                    Pré-visualização do documento
+                </div>
+                <div class="info-card-body">
+                    <div class="doc-preview" id="documento-preview">
+                        <!-- Gerado por js/documentos.js -->
+                    </div>
+                    <div class="documento-acoes">
+                        <button class="btn-cancelar" id="btn-cancelar-documento" type="button">Cancelar</button>
+                        <button class="btn-salvar" id="btn-gerar-documento" type="button">
+                            <span class="btn-text"><i class="fas fa-file-pdf"></i> Gerar e prosseguir</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                    <div class="documento-aviso" id="documento-aviso" style="display:none;"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Etapa de envio via WhatsApp -->
+        <div id="documento-envio" style="display:none;">
+
+            <div class="info-card">
+                <div class="info-card-header">
+                    <i class="fas fa-list-check"></i>
+                    Validações automáticas antes do envio
+                </div>
+                <div class="info-card-body">
+                    <p class="documentos-sub">A plataforma valida os dados obrigatórios antes do envio.</p>
+                    <div class="validacoes-envio" id="envio-validacoes"></div>
+                </div>
+            </div>
+
+            <div class="envio-card">
+                <div class="envio-card-header">
+                    <i class="fab fa-whatsapp"></i>
+                    Enviar Documento via WhatsApp
+                </div>
+                <div class="envio-card-body">
+                    <p class="envio-pergunta"><i class="fas fa-info-circle"></i> Deseja enviar o documento <b id="envio-doc-nome">—</b> via WhatsApp para:</p>
+                    <div class="envio-dados">
+                        <div class="envio-dados-k">Nome/Razão Social:</div><div id="envio-dado-nome">—</div>
+                        <div class="envio-dados-k">CPF:</div><div id="envio-dado-cpf">—</div>
+                        <div class="envio-dados-k">Telefone:</div><div id="envio-dado-telefone">—</div>
+                        <div class="envio-dados-k">E-mail:</div><div id="envio-dado-email">—</div>
+                    </div>
+                    <div class="envio-acoes">
+                        <button class="btn-cancelar" id="btn-envio-cancelar" type="button">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button class="btn-envio-wpp" id="btn-envio-confirmar" type="button">
+                            <span class="btn-text"><i class="fab fa-whatsapp"></i> Enviar</span>
+                            <span class="spinner" style="display:none;"></span>
+                        </button>
+                    </div>
+                    <div class="documento-aviso" id="envio-aviso" style="display:none;"></div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ========== MODAL MEU PERFIL ========== -->
+    <div class="modal-overlay" id="modal-perfil" style="display:none;">
+        <div class="modal-perfil-card">
+            <div class="modal-perfil-header">
+                <h3><i class="fas fa-user-circle"></i> Meu Perfil</h3>
+                <button class="modal-close-btn" onclick="fecharModalPerfil()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-perfil-body">
+                <div class="perfil-alert" id="perfil-alert">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="perfil-alert-msg"></span>
+                </div>
+                <div class="perfil-foto-area">
+                    <div class="perfil-foto-wrap" onclick="document.getElementById('input-foto-perfil').click()" title="Clique para alterar a foto">
+                        <div class="perfil-foto-placeholder" id="perfil-foto-placeholder">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <img id="perfil-foto-img" class="perfil-foto-img" src="" alt="Foto de perfil" style="display:none;">
+                        <div class="perfil-foto-overlay">
+                            <i class="fas fa-camera"></i>
+                            Alterar foto
+                        </div>
+                    </div>
+                    <input type="file" id="input-foto-perfil" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadFotoPerfil(this)">
+                    <div class="upload-progress-bar" id="perfil-progress-bar">
+                        <div class="upload-progress-fill" id="perfil-progress-fill"></div>
+                    </div>
+                    <div class="perfil-foto-nome" id="perfil-nome-display">—</div>
+                    <div class="perfil-foto-email" id="perfil-email-display">—</div>
+                </div>
+                <div class="perfil-info-row">
+                    <div class="perfil-info-item">
+                        <label><i class="fas fa-shield-alt"></i> Perfil de acesso</label>
+                        <span id="perfil-role-display">—</span>
+                    </div>
+                </div>
+                <div class="perfil-info-row" style="margin-top: 14px;">
+                    <div class="perfil-info-item" style="width:100%;">
+                        <label><i class="fas fa-key"></i> Alterar senha</label>
+                        <form id="form-alterar-senha" onsubmit="alterarSenhaPerfil(event)">
+                            <div style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px;">
+                                <input type="password" id="perfil-senha-atual" placeholder="Senha atual" autocomplete="current-password" required>
+                                <input type="password" id="perfil-nova-senha" placeholder="Nova senha (mínimo 8 caracteres)" autocomplete="new-password" minlength="8" required>
+                                <input type="password" id="perfil-confirmar-senha" placeholder="Confirmar nova senha" autocomplete="new-password" minlength="8" required>
+                            </div>
+                            <button type="submit" id="btn-perfil-alterar-senha" class="btn-salvar" style="margin-top: 12px; width: 100%;">
+                                <span class="btn-text"><i class="fas fa-save"></i> Alterar senha</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </form>
+                        <div style="margin-top: 8px; font-size: 0.78rem; color: #6b7280;">
+                            Por segurança, você precisa informar sua senha atual.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Supabase JS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase Config -->
+    <script src="js/supabase-config.js"></script>
+    <!-- Autenticação -->
+    <script src="js/auth.js"></script>
+    <!-- Foto de Perfil -->
+    <script src="js/perfil.js"></script>
+    <script src="js/sebrae-api.js"></script>
+    <!-- JS Customizado -->
+    <script src="js/app.js"></script>
+    <!-- Página de documento (Termos URC) -->
+    <script src="js/documentos.js"></script>
+</body>
+</html>

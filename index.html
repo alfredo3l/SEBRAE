@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SEBRAE - Aceite LGPD - Lista de Clientes</title>
+    <title>SEBRAE - TERMOS URC - Lista de Clientes</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome 6 -->
@@ -18,7 +18,7 @@
         <div class="d-flex justify-content-between align-items-center w-100">
             <a class="navbar-brand" href="/">
                 <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
-                <span>Aceite LGPD</span>
+                <span>TERMOS URC</span>
             </a>
             <div class="navbar-right">
                 <div class="user-info" onclick="abrirModalPerfil()" title="Meu perfil">
@@ -81,17 +81,17 @@
                     <label><i class="fas fa-bookmark"></i> Status do Termo</label>
                     <select id="filtro-status">
                         <option value="">Todos</option>
+                        <option value="gerado">Gerado</option>
+                        <option value="enviado">Enviado</option>
                         <option value="aceito">Aceito</option>
-                        <option value="nao_aceito">Não Aceito</option>
                         <option value="recusado">Recusado</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label><i class="fas fa-phone"></i> Telefone</label>
-                    <select id="filtro-telefone">
+                    <label><i class="fas fa-file-alt"></i> Tipo de Documento</label>
+                    <select id="filtro-tipo">
                         <option value="">Todos</option>
-                        <option value="com">Com Telefone</option>
-                        <option value="sem">Sem Telefone</option>
+                        <!-- Demais opções montadas pelo catálogo TERMOS_URC (js) -->
                     </select>
                 </div>
                 <button class="btn-filtrar" onclick="filtrarParceiros()">
@@ -124,11 +124,11 @@
                         <th>Nome/Razão Social</th>
                         <th>Telefone</th>
                         <th>Account ID</th>
-                        <th>Termo Aceito</th>
+                        <th>Documento</th>
+                        <th>Status</th>
                         <th>Data Envio</th>
                         <th>Data Aceite</th>
-                        <th>Data Recusa</th>
-                        <th>Data Alteração</th>
+                        <th>FOCO</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -392,5 +392,7 @@
     <script src="js/sebrae-api.js"></script>
     <!-- JS Customizado -->
     <script src="js/app.js"></script>
+    <!-- Catálogo dos Termos URC (dropdown de tipo de documento) -->
+    <script src="js/documentos.js"></script>
 </body>
 </html>

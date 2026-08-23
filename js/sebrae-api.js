@@ -124,17 +124,17 @@ function mapearContatoParaTabela(record) {
 }
 
 /**
- * Atualiza o telefone do Contact no Salesforce/FOCO via proxy.
- * contactId: Id do Contact (18 caracteres)
- * telefone: valor do campo Phone (ex: "(67)99999-9999")
- * Retorna { ok: true } em sucesso (204). Em erro lança ou retorna { ok: false, error, status }.
+ * Atualiza campos de contato (Phone e/ou Email) do Contact no Salesforce/FOCO
+ * via proxy. contactId: Id do Contact (18 caracteres).
+ * campos: { Phone?: string, Email?: string }
+ * Retorna { ok: true } em sucesso (204); em erro lança com .status/.body.
  */
-async function atualizarTelefoneContactSebrae(contactId, telefone) {
+async function atualizarContatoSebrae(contactId, campos) {
     const url = `${SEBRAE_PROXY}/api/sebrae/contact/${encodeURIComponent(contactId)}`;
     const resp = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Phone: telefone })
+        body: JSON.stringify(campos)
     });
     if (resp.ok) {
         return { ok: true };
@@ -144,6 +144,13 @@ async function atualizarTelefoneContactSebrae(contactId, telefone) {
     err.status = resp.status;
     err.body = body;
     throw err;
+}
+
+/**
+ * Atalho legado: atualiza apenas o telefone do Contact.
+ */
+async function atualizarTelefoneContactSebrae(contactId, telefone) {
+    return atualizarContatoSebrae(contactId, { Phone: telefone });
 }
 
 /**
@@ -185,6 +192,62 @@ async function buscarContactIdSalesforce(cpf, accountId) {
     }
 
     return null;
+}
+
+/**
+ * Busca os dados pessoais do Contact no FOCO pelo CPF (fluxo de exemplo:
+ * nó "Obtendo dados Pessoais"). Retorna o primeiro registro ou null.
+ * Campos: Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId,
+ * Account.Name e Account.CNPJ__c (o CNPJ vive na conta, não no contato).
+ */
+async function buscarContatoFocoPorCPF(cpf) {
+    if (!cpf) return null;
+    const cpfFormatado = formatarCPFSebrae(cpf.replace(/\D/g, ''));
+    if (cpfFormatado.length < 14) return null;
+
+    const cpfEscaped = cpfFormatado.replace(/'/g, "\\'");
+    const soql = `SELECT Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId, Account.Name, Account.CNPJ__c FROM Contact WHERE CPF__c = '${cpfEscaped}' LIMIT 1`;
+    const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(soql)}`;
+
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        return (data.records && data.records[0]) || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Busca a última interação (Case) do cliente no FOCO (fluxo de exemplo:
+ * nó "Obtendo Numero da Integração"). Tenta por ContactId; sem ele, usa
+ * subquery por CPF. Retorna o registro do Case (CaseNumber etc.) ou null.
+ */
+async function buscarUltimaInteracaoFoco(contactId, cpf) {
+    let whereClause = null;
+
+    if (contactId && contactId !== '-') {
+        whereClause = `ContactId = '${contactId.replace(/'/g, "\\'")}'`;
+    } else if (cpf) {
+        const cpfFormatado = formatarCPFSebrae(cpf.replace(/\D/g, ''));
+        if (cpfFormatado.length >= 14) {
+            whereClause = `ContactId IN (SELECT Id FROM Contact WHERE CPF__c = '${cpfFormatado.replace(/'/g, "\\'")}')`;
+        }
+    }
+    if (!whereClause) return null;
+
+    const soql = `SELECT Id, CaseNumber, Status, CreatedDate FROM Case WHERE ${whereClause} ORDER BY CreatedDate DESC LIMIT 1`;
+    const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(soql)}`;
+
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        return (data.records && data.records[0]) || null;
+    } catch {
+        return null;
+    }
 }
 
 /**

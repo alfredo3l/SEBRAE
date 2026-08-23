@@ -16,6 +16,17 @@ Desktop.ini
 *.log
 npm-debug.log*
 
+# Controle local de versões do desenvolvedor (não versionar)
+controle-versoes/
+
+# Ferramentas locais do assistente (não fazem parte do deploy na Vercel)
+.agents/
+.claude/
+skills-lock.json
+
+# README antigo do desenvolvedor (superado por README.md)
+README-Alfredo.md
+
 # Arquivos de credenciais e segredos (NUNCA versionar)
 .env
 .env.local
