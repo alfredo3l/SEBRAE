@@ -31,6 +31,7 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
   - **operador**: pode listar, cadastrar, editar e excluir clientes, gerar e enviar termos; não acessa gestão de usuários.
   - **visualizador**: apenas visualização (lista e detalhe); botões de editar, excluir e enviar termo ficam ocultos.
 - **Controle de acesso**: usuários inativos são deslogados ao tentar acessar; redirecionamento para login quando não autenticado.
+- **Sessão expirada**: quando a sessão acaba (expiração, revogação ou logout em outra aba), o usuário é levado ao login com o aviso “Sua sessão expirou. Entre novamente para continuar.” e, ao entrar, **volta para a página em que estava** (o parâmetro de retorno aceita apenas caminho interno).
 - **Cache de perfil** no `sessionStorage` para preencher nome, foto e role na navbar sem “flash” de “Carregando…” ao navegar.
 - **Logout** com limpeza de cache e redirecionamento para a página de login.
 
@@ -45,7 +46,9 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
 - **Colunas**: CPF, Nome/Razão Social, Telefone, Account ID, **Documento**, **Status** (+ PDF quando houver), Data Envio, Data Aceite, **FOCO**, Ações.
 - **Botão “Ver termo PDF”** quando existir arquivo no bucket `TermosAceite` (link assinado).
 - **Atualização em tempo real**: o aceite/recusa e a integração no FOCO são gravados pelo n8n; a tela se atualiza sozinha, **preservando filtros e página**.
+- **Nenhum termo é atribuído por padrão**: o cliente só aparece com um documento depois que o consultor gera um. Quem ainda não tem nenhum entra na lista como **“— / Sem documento”**, para continuar acessível.
 - **Clique na linha** ou no ícone de visualizar leva ao **acompanhamento do atendimento**.
+- **Botão “Novo Cliente”** — ⚠️ **temporário, apenas para o período de testes**. O cadastramento oficial de clientes é feito **exclusivamente pela plataforma FOCO**; clientes criados aqui não são enviados ao FOCO, não têm Interação e, portanto, não recebem o documento assinado como anexo lá. O próprio modal exibe esse aviso. **Remover ao fim dos testes** (botão `.btn-novo-cliente`, aviso `.aviso-cadastro-teste` e o modal `#modal-cadastro` em `index.html`).
 
 ### Seleção de documento (`detalhe.html`)
 
@@ -67,11 +70,13 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
 - **Timeline de evidências** por documento: gerado (com consultor), enviado via WhatsApp, aceito/recusado e integração no FOCO.
 - **Tratamento de recusa**: lista os documentos recusados ou informa que não há nenhum.
 - **Retomada**: documentos com status Gerado têm botão “Enviar” (e Enviado, “Reenviar”), que reabre o termo já preenchido.
+- **Botões**: **Editar Cliente** (mesmo modal do detalhe — telefone e e-mail, com atualização no FOCO, e o botão Excluir) e **Início**.
 - Também **atualiza em tempo real**, mantendo o card selecionado.
 
-### Cadastro de parceiros
+### Cadastro e exclusão de clientes
 
-- **Modal de cadastro** na lista: nome, CPF (máscara), telefone (máscara). Validação de CPF e telefone completos; inserção na tabela `parceiros` com `termo_aceito` e `termo_aceito_foco` em false. Evita duplicidade por CPF.
+- **Cadastro** pelo botão “Novo Cliente” da lista (temporário — ver acima): nome, CPF e telefone com máscara e validação, e-mail opcional; inserção em `parceiros` evitando duplicidade por CPF.
+- **Exclusão** pelo botão dentro do modal “Editar Cliente” (detalhe e acompanhamento), com confirmação que informa **quantos documentos serão apagados junto** — a FK de `documentos` é `ON DELETE CASCADE`, então os termos do cliente, inclusive os já aceitos com assinatura digital, são removidos com ele.
 
 ### Busca de parceiros na API SEBRAE (FOCO)
 

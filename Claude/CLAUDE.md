@@ -192,12 +192,17 @@ Evolução do Aceite LGPD para enviar/coletar aceite de **múltiplos termos URC*
 
 **Estado do repositório**: a frente Termos URC foi commitada no **#34** (23/08/2026) — primeiro commit desde `853f08d` — e os ajustes da preparação para os testes no **#35** (cadastro temporário de cliente, Editar Cliente no acompanhamento, fim do termo pré-atribuído, redirecionamento por sessão expirada, guarda da integração no FOCO) e **#36** (exclusão de cliente com alerta do que se perde). A partir daqui o projeto entra em **testes com usuários**. Não versionados por decisão de 23/08/2026 (nada disso é necessário no deploy da Vercel): `.agents/`, `.claude/`, `skills-lock.json` e `README-Alfredo.md` (README antigo, superado) — todos agora no `.gitignore`. ⚠️ **`js/supabase-config.js` está rastreado** apesar de constar no `.gitignore`: foi adicionado de propósito no commit `57deebb` para o deploy da Vercel funcionar, e o `.gitignore` não afeta arquivo já rastreado. A chave ali é a **anon key** (pública por design, protegida por RLS) — mas vale saber que ela está no GitHub.
 
+**Onde paramos (23/08/2026, fim da sessão):** sistema **pronto para os testes com usuários**, tudo commitado e no ar (`main` = `c8f8f0a`, sincronizado com o GitHub). Os dois fluxos n8n estão **ativos** (`TERMOS-URC` e `TERMOS-URC-ASSINADOS`), com a Evolution API apontada para o de aceite. Ao retomar, comece pelas pendências abaixo — nenhuma delas bloqueia os testes.
+
+⚠️ **Ao testar a integração no FOCO, use cliente vindo do "Buscar Cliente" (FOCO)**: cliente criado pelo botão "Novo Cliente" não existe lá, não tem Interação e por isso o documento aceito **não é anexado** (a tela mostra corretamente "não integrado" — ver a guarda da integração, acima).
+
 **Próximas fases (pendentes):**
-1. **Regra da interação** (acima) — hoje é sempre o último Case do cliente.
-2. **Migração do LGPD para `documentos`** como fonte única: o aceite/recusa do termo LGPD ainda chega só em `parceiros` (o n8n grava por CPF) e a lista deriva o status de lá.
-3. **Telas 5 e 7 da POC** (aceite pelo cliente no celular / confirmação do upload) — hoje representadas apenas no protótipo.
-4. **Débitos do n8n**: credenciais do FOCO e anon key do Supabase **hardcoded em nós** da instância (migrar para credenciais do n8n); redundância do `data_envio` gravado pelo fluxo e pelo front.
-5. **Termo de Baixa** — existe modelo oficial em `docs/` mas não há card nem entrada em `TERMOS_URC`.
+1. **Remover o cadastro temporário** assim que os testes terminarem: botão `.btn-novo-cliente` (`index.html`), aviso `.aviso-cadastro-teste` e o modal `#modal-cadastro`; o cadastro passa a ser exclusivamente pelo FOCO.
+2. **Regra da interação** (acima) — hoje é sempre o último Case do cliente.
+3. **Migração do LGPD para `documentos`** como fonte única: o aceite/recusa do termo LGPD ainda chega só em `parceiros` (o n8n grava por CPF) e a lista deriva o status de lá.
+4. **Telas 5 e 7 da POC** (aceite pelo cliente no celular / confirmação do upload) — hoje representadas apenas no protótipo.
+5. **Débitos do n8n**: credenciais do FOCO e anon key do Supabase **hardcoded em nós** da instância (migrar para credenciais do n8n); redundância do `data_envio` gravado pelo fluxo e pelo front.
+6. **Termo de Baixa** — existe modelo oficial em `docs/` mas não há card nem entrada em `TERMOS_URC`.
 
 - **Modelos oficiais** em `docs/`: 6 DOCX (Parcelamento MEI PGFN e RFB, Reenquadramento SIMEI, Termo de Responsabilidade Formalização/Alteração/Baixa) + `TERMO DECLARAÇÃO ANUAL DASN.pdf` (título oficial: "Declaração de Responsabilidade").
 - **Divergências conferidas em 22/08/2026** entre modelos e POC: falta card do **Termo de Baixa**; POC tem **3 cards de parcelamento para 2 termos oficiais** (duplicidade); filtro da Tela 1 desalinhado do menu da Tela 2; os **campos específicos de cada termo** (checklists de documentos, modalidades/valores de parcelamento, tabela DASN de anos, RG) não estão representados — a POC só demonstra o formulário genérico da Formalização.
