@@ -68,7 +68,7 @@ async function abrirModalPerfil(userId) {
     setEl('perfil-email-display',  perfil.email || '—');
     setEl('perfil-role-display',   traduzirRole(perfil.role));
     setEl('perfil-acesso-display', perfil.ultimo_acesso
-        ? new Date(perfil.ultimo_acesso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+        ? formatarDataHoraSebrae(perfil.ultimo_acesso)
         : 'Nunca acessou');
 
     // Foto

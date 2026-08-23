@@ -42,10 +42,10 @@ function trechoSe(valor, montar) {
 
 /** Data de hoje por extenso parcial: {dia, mesNome, ano} */
 function dataHojePartes() {
-    const meses = ['janeiro','fevereiro','março','abril','maio','junho',
-                   'julho','agosto','setembro','outubro','novembro','dezembro'];
-    const d = new Date();
-    return { dia: String(d.getDate()).padStart(2, '0'), mesNome: meses[d.getMonth()], ano: d.getFullYear() };
+    // Data do atendimento no fuso de MS: perto da meia-noite, o fuso do
+    // navegador poderia imprimir o dia seguinte no documento.
+    const h = hojeSebrae();
+    return { dia: h.day, mesNome: h.mesNome, ano: h.year };
 }
 
 /** Máscara simples de CNPJ (00.000.000/0000-00) */
@@ -71,8 +71,7 @@ function blocoLocalDataAssinatura(local, assinante) {
 
 /** Data de hoje no formato dd/mm/aaaa */
 function dataHojeBR() {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    return formatarDataSebrae(new Date());   // horário de MS (js/datas.js)
 }
 
 /**

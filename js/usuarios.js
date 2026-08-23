@@ -448,12 +448,12 @@ function badgeRoleHtml(role) {
 
 function formatarData(iso) {
     if (!iso) return '-';
-    return new Date(iso).toLocaleDateString('pt-BR');
+    return formatarDataSebrae(iso);
 }
 
 function formatarDataHora(iso) {
     if (!iso) return '-';
-    return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    return formatarDataHoraSebrae(iso);
 }
 
 function escapeHtml(str) {

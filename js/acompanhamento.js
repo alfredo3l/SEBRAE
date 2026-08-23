@@ -57,10 +57,7 @@ function focoDoDocumento(doc) {
 
 /** Data curta dd/mm hh:mm para os cards */
 function dataCurta(v) {
-    if (!v) return '—';
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return '—';
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return formatarDataCurtaSebrae(v);   // horário de MS (js/datas.js)
 }
 
 /**

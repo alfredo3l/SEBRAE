@@ -21,26 +21,9 @@ function formatarData(dataStr) {
  * Aceita ISO, texto no formato dd/MM/aaaa ou dd/MM/aaaa HH:mm
  */
 function formatarDataHora(dataStr) {
-    if (!dataStr || dataStr === '-') return '-';
-
-    let d;
-    // Tenta interpretar formato brasileiro dd/MM/aaaa ou dd/MM/aaaa HH:mm
-    const matchBR = String(dataStr).match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
-    if (matchBR) {
-        const [, dia, mes, ano, hora = '00', min = '00'] = matchBR;
-        d = new Date(`${ano}-${mes}-${dia}T${hora}:${min}:00`);
-    } else {
-        d = new Date(dataStr);
-    }
-
-    if (!d || isNaN(d.getTime())) return String(dataStr);
-
-    const dia = String(d.getDate()).padStart(2, '0');
-    const mes = String(d.getMonth() + 1).padStart(2, '0');
-    const ano = d.getFullYear();
-    const hora = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${dia}/${mes}/${ano} ${hora}:${min}`;
+    // Sempre no horário de MS (js/datas.js): o computador do consultor pode
+    // estar em outro fuso e mostrava o horário deslocado.
+    return formatarDataHoraSebrae(dataStr, String(dataStr ?? '-'));
 }
 
 // Cache de verificação de PDF para evitar chamadas repetidas ao Storage
