@@ -320,11 +320,24 @@ async function inicializarAcompanhamento() {
         atualizarAoVoltarParaAba(recarregarAcompanhamentoAoVivo);
     }
 
-    // Interação (Case) do FOCO — assíncrono, sem travar a tela
+    // Interação (Case) e CNPJ do FOCO — assíncrono, sem travar a tela
+    const chaveFoco = 'sbr_foco_' + (parceiro.cpf || '').replace(/\D/g, '');
+    const focoCache = (typeof cacheNavGet === 'function') ? cacheNavGet(chaveFoco) : null;
+    if (focoCache?.contatos) pintarCNPJFoco('acomp-cnpj', focoCache.contatos, parceiro);
+
     try {
-        const interacao = await buscarUltimaInteracaoFoco(parceiro.id_contato_salesforce, parceiro.cpf);
+        const [contatos, interacao] = await Promise.all([
+            buscarContatosFocoPorCPF(parceiro.cpf),
+            buscarUltimaInteracaoFoco(parceiro.id_contato_salesforce, parceiro.cpf)
+        ]);
         if (interacao?.CaseNumber) {
             document.getElementById('acomp-interacao').textContent = interacao.CaseNumber;
+        }
+        pintarCNPJFoco('acomp-cnpj', contatos, parceiro);
+
+        const contato = escolherContatoFoco(contatos, parceiro.id_salesforce);
+        if (typeof cacheNavSet === 'function' && (contatos.length || interacao)) {
+            cacheNavSet(chaveFoco, { contato, interacao, contatos });
         }
     } catch { /* FOCO indisponível: mantém "—" */ }
 }

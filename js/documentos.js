@@ -48,14 +48,23 @@ function dataHojePartes() {
     return { dia: h.day, mesNome: h.mesNome, ano: h.year };
 }
 
+/** Formata um CNPJ como 00.000.000/0000-00 (o FOCO já costuma vir mascarado) */
+function formatarCNPJValor(valor) {
+    let v = String(valor ?? '').replace(/\D/g, '').slice(0, 14);
+    return v.replace(/^(\d{2})(\d)/, '$1.$2')
+            .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+            .replace(/\.(\d{3})(\d)/, '.$1/$2')
+            .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
 /** Máscara simples de CNPJ (00.000.000/0000-00) */
 function mascaraCNPJDoc(input) {
-    let v = input.value.replace(/\D/g, '').slice(0, 14);
-    v = v.replace(/^(\d{2})(\d)/, '$1.$2')
-         .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-         .replace(/\.(\d{3})(\d)/, '.$1/$2')
-         .replace(/(\d{4})(\d)/, '$1-$2');
-    input.value = v;
+    input.value = formatarCNPJValor(input.value);
+}
+
+/** Só os dígitos — para comparar CNPJs sem tropeçar na máscara */
+function digitosCNPJ(valor) {
+    return String(valor ?? '').replace(/\D/g, '');
 }
 
 // ===== Blocos de assinatura/local reutilizados nos templates =====
@@ -82,8 +91,9 @@ function camposBaseTermo() {
     return [
         { id: 'nome', label: 'Nome/Razão Social', auto: true, valor: c => c.parceiro.nome_razao_social },
         { id: 'cpf', label: 'CPF', auto: true, valor: c => c.parceiro.cpf },
-        // Vem do FOCO (Account.CNPJ__c) mas continua editável pelo consultor
-        { id: 'cnpj', label: 'CNPJ (quando aplicável)', mascara: 'cnpj', placeholder: '00.000.000/0000-00',
+        // Dado do FOCO (Account.CNPJ__c): trava quando a conta tem CNPJ;
+        // só fica editável quando o cadastro do FOCO não traz a informação.
+        { id: 'cnpj', label: 'CNPJ', autoFoco: true, mascara: 'cnpj', placeholder: '00.000.000/0000-00',
           valor: c => c.foco?.Account?.CNPJ__c || '' },
         { id: 'telefone', label: 'Telefone (WhatsApp)', valor: c => c.parceiro.telefone || '', placeholder: '(00)00000-0000' },
         { id: 'email', label: 'E-mail', valor: c => c.parceiro.email || c.foco?.Email || '', placeholder: 'email@exemplo.com' },
@@ -401,11 +411,14 @@ let _docParceiro = null;
 let _docContexto = null;   // { parceiro, foco, interacao }
 let _docTipo = null;
 let _docRegistroId = null; // id do registro em public.documentos (status Gerado/Enviado)
+let _docRegistroStatus = null; // status do registro retomado
+let _docCnpjSalvo = null;  // CNPJ gravado no documento retomado (para avisar divergência)
 
 // ===== Renderização do formulário =====
 
 function renderCampoDocumento(campo, ctx) {
     const tagAuto = '<span class="tag-auto">AUTO</span>';
+    const tagAutoFoco = '<span class="tag-auto">AUTO • FOCO</span>';
     const tagEdit = '<span class="tag-edit">✏️ EDITÁVEL</span>';
     const full = campo.full ? ' doc-form-full' : '';
     const valorInicial = campo.valor ? (campo.valor(ctx) ?? '') : '';
@@ -461,11 +474,16 @@ function renderCampoDocumento(campo, ctx) {
     }
 
     // text (default)
-    const readonly = campo.auto ? ' readonly class="campo-auto"' : '';
+    // Campo "autoFoco" (CNPJ): trava só quando o FOCO trouxe o valor.
+    const travado = campo.auto || (campo.autoFoco && temValor(valorInicial));
+    const readonly = travado ? ' readonly class="campo-auto"' : '';
+    const badge = travado ? (campo.autoFoco ? tagAutoFoco : tagAuto) : tagEdit;
     const mascara = campo.mascara === 'cnpj' ? ' oninput="mascaraCNPJDoc(this)"' : '';
-    return `<div class="doc-form-group${full}">
-        <label>${escHTML(campo.label)} ${campo.auto ? tagAuto : tagEdit}</label>
+    const hint = campo.autoFoco ? '<small class="doc-form-hint" hidden></small>' : '';
+    return `<div class="doc-form-group${full}" data-campo="${campo.id}">
+        <label>${escHTML(campo.label)} ${badge}</label>
         <input type="text" name="${campo.id}" value="${escHTML(valorInicial)}" placeholder="${escHTML(campo.placeholder || '')}"${readonly}${mascara}>
+        ${hint}
     </div>`;
 }
 
@@ -478,7 +496,8 @@ function aplicarDadosNoFormulario(dados) {
     const form = document.getElementById('documento-form');
     if (!form) return;
 
-    form.querySelectorAll('input, textarea').forEach(inp => {
+    // "select" entra na varredura por causa da lista de CNPJs do FOCO
+    form.querySelectorAll('input, textarea, select').forEach(inp => {
         if (!(inp.name in dados)) return;
         const valor = dados[inp.name];
         if (inp.type === 'checkbox') inp.checked = !!valor;
@@ -487,6 +506,95 @@ function aplicarDadosNoFormulario(dados) {
     });
 
     atualizarPreviewDocumento();
+}
+
+/**
+ * Aplica no formulário o CNPJ vindo do FOCO (RF: o termo tem de sair no CNPJ
+ * do cliente certo, não em digitação livre do consultor):
+ *   - nenhum CNPJ na conta → campo segue editável, com aviso;
+ *   - um CNPJ            → campo travado com o valor do FOCO;
+ *   - vários CNPJs       → lista de seleção com as contas reais do cliente.
+ * Muta só o grupo do campo — não re-renderiza o formulário (o consultor pode
+ * estar digitando em outro campo e o listener de preview seria reanexado).
+ */
+function aplicarCnpjDoFoco(lista) {
+    const form = document.getElementById('documento-form');
+    if (!form) return;
+    const grupo = form.querySelector('.doc-form-group[data-campo="cnpj"]');
+    if (!grupo) return; // termo sem campo de CNPJ (ex.: termo-lgpd)
+
+    const cnpjs = lista || [];
+    const badge = grupo.querySelector('.tag-auto, .tag-edit');
+    const hint = grupo.querySelector('.doc-form-hint');
+    const atual = grupo.querySelector('[name="cnpj"]');
+    const valorAtual = atual ? atual.value : '';
+
+    // Preferência: conta do próprio cliente → valor já no campo → primeiro
+    const doCliente = _docParceiro?.id_salesforce
+        ? cnpjs.find(c => c.accountId === _docParceiro.id_salesforce) : null;
+    const iguaisAoAtual = cnpjs.find(c => digitosCNPJ(c.cnpj) === digitosCNPJ(valorAtual));
+    const escolhido = doCliente || iguaisAoAtual || cnpjs[0] || null;
+
+    if (cnpjs.length > 1) {
+        // Vários CNPJs: troca o campo por uma lista das contas do cliente
+        const opcoes = cnpjs.map(c => {
+            const rotulo = c.conta ? `${c.conta} — ${c.cnpj}` : c.cnpj;
+            const sel = c === escolhido ? ' selected' : '';
+            return `<option value="${escHTML(c.cnpj)}"${sel}>${escHTML(rotulo)}</option>`;
+        }).join('');
+        if (atual) atual.outerHTML = `<select name="cnpj" class="campo-auto">${opcoes}</select>`;
+        if (badge) badge.outerHTML = '<span class="tag-auto">AUTO • FOCO</span>';
+        if (hint) {
+            hint.textContent = `Este CPF possui ${cnpjs.length} CNPJs no FOCO — selecione o correto.`;
+            hint.hidden = false;
+        }
+    } else {
+        // Um ou nenhum CNPJ: campo de texto, travado só quando o FOCO tem o dado
+        const tem = !!escolhido;
+        const valor = tem ? formatarCNPJValor(escolhido.cnpj) : valorAtual;
+        if (!atual || atual.tagName === 'SELECT') {
+            const marcacao = `<input type="text" name="cnpj" value="${escHTML(valor)}" placeholder="00.000.000/0000-00"` +
+                (tem ? ' readonly class="campo-auto"' : '') + ' oninput="mascaraCNPJDoc(this)">';
+            if (atual) atual.outerHTML = marcacao;
+            else grupo.insertAdjacentHTML('beforeend', marcacao);
+        } else {
+            if (tem) atual.value = valor;
+            atual.readOnly = tem;           // readOnly (nunca disabled): o valor
+            atual.classList.toggle('campo-auto', tem); // precisa continuar sendo lido
+        }
+        if (badge) {
+            badge.outerHTML = tem
+                ? '<span class="tag-auto">AUTO • FOCO</span>'
+                : '<span class="tag-edit">✏️ EDITÁVEL</span>';
+        }
+        if (hint) {
+            hint.textContent = tem ? '' : 'Sem CNPJ no cadastro do FOCO — preencha manualmente se aplicável.';
+            hint.hidden = tem;
+        }
+    }
+
+    atualizarPreviewDocumento();
+}
+
+/**
+ * Documento já respondido/enviado cujo CNPJ salvo não é mais o do FOCO: o
+ * consultor precisa saber que o reenvio sairá com o CNPJ atual do cadastro.
+ * O documento já gravado não é alterado — só o que for gerado de novo.
+ */
+function avisarDivergenciaCNPJ() {
+    if (!_docCnpjSalvo) return;
+    if (!['enviado', 'aceito', 'recusado', 'nao_aceito'].includes(_docRegistroStatus)) return;
+
+    const campo = document.querySelector('#documento-form [name="cnpj"]');
+    const atual = campo ? campo.value : '';
+    if (!temValor(atual) || digitosCNPJ(atual) === digitosCNPJ(_docCnpjSalvo)) return;
+
+    const aviso = document.getElementById('documento-aviso');
+    if (!aviso) return;
+    aviso.innerHTML += `<br><b>Atenção:</b> o CNPJ deste documento (${escHTML(_docCnpjSalvo)}) ` +
+        `difere do cadastro atual do FOCO (${escHTML(atual)}). ` +
+        'Ao gerar novamente, o termo passará a usar o do FOCO.';
+    aviso.style.display = 'block';
 }
 
 /**
@@ -527,7 +635,8 @@ async function carregarDocumentoExistente(docId) {
 function lerDadosFormularioDocumento() {
     const form = document.getElementById('documento-form');
     const dados = {};
-    form.querySelectorAll('input, textarea').forEach(inp => {
+    // "select" entra na varredura por causa da lista de CNPJs do FOCO
+    form.querySelectorAll('input, textarea, select').forEach(inp => {
         if (inp.type === 'checkbox') dados[inp.name] = inp.checked;
         else if (inp.type === 'radio') { if (inp.checked) dados[inp.name] = inp.value; }
         else dados[inp.name] = inp.value;
@@ -967,13 +1076,20 @@ async function inicializarPaginaDocumento() {
     }
     _docParceiro = parceiro;
 
-    // Contexto FOCO (e-mail etc.) — não bloqueia a renderização inicial
-    _docContexto = { parceiro, foco: null, interacao: null };
+    // Contexto FOCO (e-mail etc.) — não bloqueia a renderização inicial.
+    // O cache da sessão (gravado no Detalhe) já traz o contato: com ele o CNPJ
+    // nasce travado, sem piscar como editável até a rede responder.
+    const chaveFoco = 'sbr_foco_' + (parceiro.cpf || '').replace(/\D/g, '');
+    const focoCache = (typeof cacheNavGet === 'function') ? cacheNavGet(chaveFoco) : null;
+    _docContexto = { parceiro, foco: focoCache?.contato || null, interacao: null };
     renderFormularioDocumento(termo);
+    if (focoCache?.contatos) aplicarCnpjDoFoco(cnpjsDosContatos(focoCache.contatos));
 
     // Retomada: documento já gerado (?doc=<id>) ou rascunho existente
     const registroExistente = await carregarDocumentoExistente(params.get('doc'));
     if (registroExistente) {
+        _docRegistroStatus = registroExistente.status || null;
+        _docCnpjSalvo = registroExistente.dados_formulario?.cnpj || '';
         aplicarDadosNoFormulario(registroExistente.dados_formulario);
         if (registroExistente.case_number) {
             _docContexto.interacao = {
@@ -991,8 +1107,11 @@ async function inicializarPaginaDocumento() {
         }
     }
 
+    let contatosFoco = [];
     try {
-        const contato = await buscarContatoFocoPorCPF(parceiro.cpf);
+        // Um CPF pode responder por mais de uma conta/CNPJ: busca todas de uma vez
+        contatosFoco = await buscarContatosFocoPorCPF(parceiro.cpf);
+        const contato = escolherContatoFoco(contatosFoco, parceiro.id_salesforce);
         if (contato) {
             _docContexto.foco = contato;
             // Preenche campos que dependem do FOCO (e-mail, Account ID) se ainda vazios
@@ -1004,12 +1123,10 @@ async function inicializarPaginaDocumento() {
             if (accountInput && (accountInput.value === '—' || !accountInput.value) && contato.AccountId) {
                 accountInput.value = contato.AccountId;
             }
-            // CNPJ vem da conta no FOCO; segue editável pelo consultor
-            const cnpjInput = document.querySelector('#documento-form input[name="cnpj"]');
-            if (cnpjInput && !cnpjInput.value && contato.Account?.CNPJ__c) {
-                cnpjInput.value = contato.Account.CNPJ__c;
-            }
         }
+        // O CNPJ é dado do FOCO: prevalece sobre o valor salvo no documento
+        aplicarCnpjDoFoco(cnpjsDosContatos(contatosFoco));
+        avisarDivergenciaCNPJ();
 
         // Última interação (Case) — nº do processo/interação da POC (RF12).
         // Documento retomado mantém a interação com que foi gerado.
@@ -1024,8 +1141,19 @@ async function inicializarPaginaDocumento() {
                 if (interacaoInput) interacaoInput.value = interacao.CaseNumber;
             }
         }
+        if (typeof cacheNavSet === 'function' && (contatosFoco.length || _docContexto.interacao)) {
+            cacheNavSet(chaveFoco, {
+                contato: _docContexto.foco,
+                interacao: _docContexto.interacao,
+                contatos: contatosFoco
+            });
+        }
         atualizarPreviewDocumento();
-    } catch { /* FOCO indisponível: segue com "—" */ }
+    } catch (e) {
+        // FOCO indisponível: segue com "—" e o CNPJ volta a ser editável
+        console.warn('FOCO indisponível para o documento:', e?.message || e);
+        aplicarCnpjDoFoco([]);
+    }
 
     // Botões: "Gerar e prosseguir" → etapa de envio (Tela 4 da POC)
     document.getElementById('btn-gerar-documento').onclick = mostrarTelaEnvio;
@@ -1040,8 +1168,10 @@ function renderFormularioDocumento(termo) {
         termo.campos.map(c => renderCampoDocumento(c, _docContexto)).join('') +
         '</div>';
 
-    // Preview reativo
-    document.getElementById('documento-form').addEventListener('input', atualizarPreviewDocumento);
+    // Preview reativo ("change" cobre a lista de CNPJs do FOCO)
+    const form = document.getElementById('documento-form');
+    form.addEventListener('input', atualizarPreviewDocumento);
+    form.addEventListener('change', atualizarPreviewDocumento);
     atualizarPreviewDocumento();
 }
 

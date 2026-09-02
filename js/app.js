@@ -869,24 +869,54 @@ async function carregarDadosFocoDetalhe(parceiro) {
             parceiroAtual._focoInteracao = emCache.interacao || null;
         }
         if (emCache.interacao?.CaseNumber) interacaoEl.textContent = emCache.interacao.CaseNumber;
+        if (emCache.contatos) pintarCNPJFoco('info-cnpj', emCache.contatos, parceiro);
     }
 
     try {
-        // Contact e Case em paralelo (o Case também resolve por CPF via subquery)
-        const [contato, interacao] = await Promise.all([
-            buscarContatoFocoPorCPF(parceiro.cpf),
+        // Contacts e Case em paralelo (o Case também resolve por CPF via subquery).
+        // Todos os Contacts do CPF: um mesmo CPF pode ter mais de uma conta/CNPJ.
+        const [contatos, interacao] = await Promise.all([
+            buscarContatosFocoPorCPF(parceiro.cpf),
             buscarUltimaInteracaoFoco(parceiro.id_contato_salesforce, parceiro.cpf)
         ]);
+        const contato = escolherContatoFoco(contatos, parceiro.id_salesforce);
 
         if (parceiroAtual && parceiroAtual.id === parceiro.id) {
             parceiroAtual._foco = contato || null;
             if (interacao) parceiroAtual._focoInteracao = interacao;
         }
         if (interacao?.CaseNumber) interacaoEl.textContent = interacao.CaseNumber;
+        pintarCNPJFoco('info-cnpj', contatos, parceiro);
 
-        if (contato || interacao) cacheNavSet(chaveCache, { contato, interacao });
+        if (contato || interacao) cacheNavSet(chaveCache, { contato, interacao, contatos });
     } catch (e) {
         console.warn('FOCO indisponível para o detalhe:', e?.message || e);
+    }
+}
+
+/**
+ * Escreve o CNPJ do cliente (vindo do FOCO) no cabeçalho do Detalhe ou do
+ * Acompanhamento. Havendo mais de uma conta, mostra a do cliente e sinaliza
+ * as demais — a escolha de qual entra no termo é feita na tela do documento.
+ */
+function pintarCNPJFoco(elementoId, contatos, parceiro) {
+    const el = document.getElementById(elementoId);
+    if (!el) return;
+
+    const lista = (typeof cnpjsDosContatos === 'function') ? cnpjsDosContatos(contatos) : [];
+    if (!lista.length) {
+        el.textContent = '—';
+        el.removeAttribute('title');
+        return;
+    }
+
+    const principal = (parceiro?.id_salesforce
+        && lista.find(c => c.accountId === parceiro.id_salesforce)) || lista[0];
+    el.textContent = principal.cnpj + (lista.length > 1 ? ` (+${lista.length - 1})` : '');
+    if (lista.length > 1) {
+        el.title = lista.map(c => (c.conta ? `${c.conta} — ${c.cnpj}` : c.cnpj)).join('\n');
+    } else {
+        el.removeAttribute('title');
     }
 }
 

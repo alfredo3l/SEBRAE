@@ -195,28 +195,71 @@ async function buscarContactIdSalesforce(cpf, accountId) {
 }
 
 /**
- * Busca os dados pessoais do Contact no FOCO pelo CPF (fluxo de exemplo:
- * nó "Obtendo dados Pessoais"). Retorna o primeiro registro ou null.
+ * Busca TODOS os Contacts do CPF no FOCO (um mesmo CPF pode responder por
+ * mais de uma conta/CNPJ). Retorna um array de registros — vazio em erro.
  * Campos: Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId,
  * Account.Name e Account.CNPJ__c (o CNPJ vive na conta, não no contato).
  */
-async function buscarContatoFocoPorCPF(cpf) {
-    if (!cpf) return null;
+async function buscarContatosFocoPorCPF(cpf) {
+    if (!cpf) return [];
     const cpfFormatado = formatarCPFSebrae(cpf.replace(/\D/g, ''));
-    if (cpfFormatado.length < 14) return null;
+    if (cpfFormatado.length < 14) return [];
 
     const cpfEscaped = cpfFormatado.replace(/'/g, "\\'");
-    const soql = `SELECT Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId, Account.Name, Account.CNPJ__c FROM Contact WHERE CPF__c = '${cpfEscaped}' LIMIT 1`;
+    const soql = `SELECT Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId, Account.Name, Account.CNPJ__c FROM Contact WHERE CPF__c = '${cpfEscaped}' ORDER BY LastModifiedDate DESC LIMIT 50`;
     const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(soql)}`;
 
     try {
         const resp = await fetch(url);
-        if (!resp.ok) return null;
+        if (!resp.ok) return [];
         const data = await resp.json();
-        return (data.records && data.records[0]) || null;
+        return data.records || [];
     } catch {
-        return null;
+        return [];
     }
+}
+
+/**
+ * Escolhe um Contact entre os do CPF, de forma determinística: a conta do
+ * próprio cliente (quando informada), senão a primeira que tenha CNPJ, senão
+ * a primeira da lista. Sem isso, o "LIMIT 1" devolvia um registro arbitrário.
+ */
+function escolherContatoFoco(registros, accountPreferido) {
+    if (!registros || !registros.length) return null;
+    if (accountPreferido) {
+        const doCliente = registros.find(r => r.AccountId === accountPreferido);
+        if (doCliente) return doCliente;
+    }
+    return registros.find(r => (r.Account?.CNPJ__c || '').trim()) || registros[0];
+}
+
+/**
+ * Busca os dados pessoais do Contact no FOCO pelo CPF (fluxo de exemplo:
+ * nó "Obtendo dados Pessoais"). Retorna um registro ou null.
+ */
+async function buscarContatoFocoPorCPF(cpf, accountPreferido) {
+    const registros = await buscarContatosFocoPorCPF(cpf);
+    return escolherContatoFoco(registros, accountPreferido);
+}
+
+/**
+ * Extrai a lista de CNPJs vinculados ao CPF a partir dos Contacts do FOCO,
+ * sem repetir o mesmo CNPJ. Formato: [{ cnpj, accountId, conta }].
+ */
+function cnpjsDosContatos(registros) {
+    const lista = [];
+    const vistos = new Set();
+
+    (registros || []).forEach(r => {
+        const cnpj = (r.Account?.CNPJ__c || '').trim();
+        if (!cnpj) return;
+        const chave = cnpj.replace(/\D/g, '');
+        if (vistos.has(chave)) return;
+        vistos.add(chave);
+        lista.push({ cnpj, accountId: r.AccountId || null, conta: r.Account?.Name || '' });
+    });
+
+    return lista;
 }
 
 /**

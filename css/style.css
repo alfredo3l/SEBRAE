@@ -1788,7 +1788,8 @@ body {
     color: #34506e;
 }
 
-.doc-form-group input[type="text"] {
+.doc-form-group input[type="text"],
+.doc-form-group select {
     width: 100%;
     padding: 9px 11px;
     border: 1px solid #ccd3db;
@@ -1797,7 +1798,8 @@ body {
     font-family: inherit;
 }
 
-.doc-form-group input[type="text"]:focus {
+.doc-form-group input[type="text"]:focus,
+.doc-form-group select:focus {
     outline: none;
     border-color: #0056a6;
     box-shadow: 0 0 0 3px rgba(0, 86, 166, 0.1);
@@ -1845,6 +1847,14 @@ body {
     border-radius: 8px;
     margin-left: 6px;
     vertical-align: middle;
+}
+
+/* Aviso discreto abaixo de um campo (ex.: CNPJ ausente no FOCO) */
+.doc-form-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: #6c757d;
 }
 
 .doc-opcao {

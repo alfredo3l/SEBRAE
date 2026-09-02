@@ -87,9 +87,10 @@ Campos relevantes do `Contact`: `Id`, `AccountId`, `Name`, `CPF__c`, `Phone`, `M
 
 Adicionadas em 22/08/2026, baseadas no fluxo de exemplo `fluxos/Exemplo-API/API_Exemplo_FLUXO_N8N.md`:
 
-- **Dados pessoais do Contact** (`buscarContatoFocoPorCPF`):
-  `SELECT Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId, Account.Name, Account.CNPJ__c FROM Contact WHERE CPF__c = '<cpf formatado>' LIMIT 1`
+- **Dados pessoais do Contact** (`buscarContatosFocoPorCPF`, desde 02/09/2026 no plural):
+  `SELECT Id, Name, CPF__c, Phone, MobilePhone, Email, AccountId, Account.Name, Account.CNPJ__c FROM Contact WHERE CPF__c = '<cpf formatado>' ORDER BY LastModifiedDate DESC LIMIT 50`
   ⚠️ O **CNPJ fica na conta** (`Account.CNPJ__c`), não no contato — o `Contact` não possui campo de CNPJ. Vem com máscara (`00.514.820/0011-73`) e costuma estar vazio para pessoa física. Outros campos úteis da `Account`: `CPF__c`, `InscricaoEstadual__c`, `Phone`, endereço de cobrança (`Billing*`).
+  ⚠️ **Um mesmo CPF pode ter mais de um Contact/Account** (logo, mais de um CNPJ). Por isso a consulta deixou de usar `LIMIT 1` — sem `ORDER BY`, o registro devolvido era arbitrário e podia ser justamente o sem CNPJ. Helpers: `escolherContatoFoco(registros, accountPreferido)` escolhe um registro de forma determinística (conta do cliente → primeira com CNPJ → primeira) e `cnpjsDosContatos(registros)` devolve a lista de CNPJs sem repetição. `buscarContatoFocoPorCPF(cpf, accountPreferido)` continua existindo como atalho para um único registro.
 - **Última interação/atendimento** (`buscarUltimaInteracaoFoco`) — o objeto de interação no FOCO é o **`Case`** (padrão Salesforce), ligado ao cliente por `ContactId`:
   `SELECT Id, CaseNumber, Status, CreatedDate FROM Case WHERE ContactId = '<id>' ORDER BY CreatedDate DESC LIMIT 1`
   (fallback sem ContactId: `WHERE ContactId IN (SELECT Id FROM Contact WHERE CPF__c = '<cpf>')`).
