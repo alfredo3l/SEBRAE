@@ -43,6 +43,7 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
   - Pesquisa textual (CPF, nome, telefone, Account ID, nome do documento).
   - Status: Gerado, Enviado, Aceito, Recusado (o cliente sem documento enviado aparece como **Pendente**).
   - Tipo de documento (alimentado pelo catálogo `TERMOS_URC`).
+  - Botão **“Limpar”** ao lado de “Filtrar”: zera os três filtros, volta à página 1 e devolve o foco à pesquisa. Fica desabilitado enquanto não há filtro preenchido.
 - **Colunas**: CPF, Nome/Razão Social, Telefone, Account ID, **Documento**, **Status** (+ PDF quando houver), Data Envio, Data Aceite, **FOCO**, Ações.
 - **Botão “Ver termo PDF”** quando existir arquivo no bucket `TermosAceite` (link assinado).
 - **Atualização em tempo real**: o aceite/recusa e a integração no FOCO são gravados pelo n8n; a tela se atualiza sozinha, **preservando filtros e página**.
@@ -53,16 +54,18 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
 ### Seleção de documento (`detalhe.html`)
 
 - Card **“Atendimento em andamento”**: nº da interação (`CaseNumber` do último Case do cliente no FOCO) e consultor logado.
-- **Grade de cards** com os termos disponíveis; clicar abre o formulário do termo escolhido.
+- **Grade de cards** com os 7 termos do catálogo. Clicar **marca ou desmarca** o card (não navega mais): dá para tratar **vários termos no mesmo atendimento**. Uma barra fixa mostra a contagem, os termos escolhidos e o botão **“Prosseguir com N documentos”**, que abre `documento?id=<parceiro>&tipos=a,b,c`.
 - **Botões (conforme permissão)**: Buscar Cliente, **Editar Cliente** (telefone e e-mail, com sincronização no FOCO), Acompanhamento, Excluir e **Início**.
 
 ### Preenchimento e envio do termo (`documento.html`)
 
+- **Uma aba por termo selecionado**: cada termo tem o seu formulário e a sua pré-visualização, alternados por abas — trocar de aba não perde nada do que já foi digitado. Telefone, e-mail e CNPJ são dados **do cliente**, então o valor digitado numa aba se replica nas outras.
 - **Formulário por termo** (catálogo `TERMOS_URC`): base comum (nome, CPF, CNPJ, telefone, e-mail, Account ID, nº da interação, data) + campos específicos do modelo oficial + observações complementares.
-- **Dados vindos do FOCO**: CPF, telefone, e-mail e **CNPJ** (`Account.CNPJ__c`) chegam preenchidos e continuam **editáveis**; botão **“Salvar contato do cliente”** grava telefone/e-mail no cadastro e sincroniza no FOCO sem sair da tela.
+- **Dados vindos do FOCO**: CPF, telefone e e-mail chegam preenchidos e continuam **editáveis** — o botão **“Salvar contato do cliente”** grava telefone/e-mail no cadastro e sincroniza no FOCO sem sair da tela. O **CNPJ** (`Account.CNPJ__c`) é a exceção: vem **travado** quando o FOCO tem o dado, vira uma **lista** quando o CPF tem mais de uma conta e só fica editável quando o FOCO não traz nenhum (corrigir CNPJ é no FOCO).
 - **Pré-visualização** com a redação oficial do termo, atualizada enquanto se digita. Trechos de qualificação (CNPJ, e-mail, telefone, RG) **somem quando o dado não existe**, em vez de deixar lacunas.
 - **“Gerar e prosseguir”**: grava o documento (status `gerado`, campos preenchidos e HTML renderizado) e abre a etapa de envio, com validações (CPF, FOCO, nome, telefone, e-mail, documento gerado).
-- **“Enviar”**: dispara o webhook n8n único (`/webhook/TERMOS-URC`), que gera o PDF e envia pelo WhatsApp. O documento recebe uma **letra de resposta** (A, B, C…) e o consultor vê qual resposta o cliente deve dar.
+- **“Enviar”**: dispara o webhook n8n único (`/webhook/TERMOS-URC`), que gera o PDF e envia pelo WhatsApp. Cada documento recebe uma **letra de resposta** (A, B, C…) e o consultor vê qual resposta o cliente deve dar — **1A** aceita, **2A** não aceita.
+- **Envio em lote**: com vários termos, o cliente recebe **uma única mensagem de texto** listando todos os documentos e seus códigos, seguida de um PDF por documento. Se um documento falhar, os outros seguem: o aviso diz o que foi e o que não foi, e um novo clique reprocessa **só as falhas**. Documento sem letra reservada **não é enviado** (o cliente não teria como respondê-lo).
 
 ### Acompanhamento do atendimento (`acompanhamento.html`)
 
