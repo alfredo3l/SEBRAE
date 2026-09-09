@@ -32,3 +32,8 @@ README-Alfredo.md
 .env.local
 .env.*.local
 js/supabase-config.js
+
+# Midia local de apoio (gravacoes de reuniao, prints) - repositorio publico, nao versionar
+docs/*.mp4
+docs/image001.jpg
+docs/image002.jpg

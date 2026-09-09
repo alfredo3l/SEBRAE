@@ -1,6 +1,6 @@
 # [Termo URC - Envio sem assinar]
 
-- **ID:** `Hqfoa19HyX4QFOqW` · **Status:** ativo · **Nós:** 22 · **Criado:** 23/08/2026
+- **ID:** `Hqfoa19HyX4QFOqW` · **Status:** ativo · **Nós:** 25 · **Criado:** 23/08/2026
 - **Webhook:** `POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC`
 - **Origem:** cópia de `[Termo LGPD - Envio sem assinar]` (`pJecOOv0Sqxippeu`), adaptada em 23/08/2026 para atender **todos os termos URC**.
 
@@ -15,14 +15,23 @@ Webhook (POST /webhook/TERMOS-URC)
   → Get a row (Supabase: parceiros por telefone)
   → If (telefone existe?)
        ├─ false → No Operation (encerra em silêncio)
-       └─ true  → Download logo (Google Drive) → converte Base 64
+       └─ true  → Monta_Mensagem (Code: monta o texto do WhatsApp e decide se ESTA execução o envia)
+                  → Enviar texto? (If: lote.enviar_texto)
+                       ├─ true  → Enviar texto (Evolution API) ─┐
+                       └─ false ──────────────────────────────┤
+                                                               ↓
+                  → Download logo (Google Drive) → converte Base 64
                   → Saida_HTML (Code: monta o HTML do documento — dinâmico)
                   → HTML → HTML_Base64 → Convert to File
-                  → HTTP Request (Gotenberg: HTML → PDF)
+                  → Monta rodape PDF (Code: binário footer.html, "Página X de Y")
+                  → HTTP Request (Gotenberg: HTML → PDF A4)
                   → Extract from File
                   → Atualiza Banco de Dados (Supabase: documentos.status = enviado, data_envio)
-                  → Enviar texto (Evolution API) → Wait 1s → Enviar documento (PDF)
+                  → Wait 1s → Enviar documento (PDF)
 ```
+
+O `Enviar texto` roda **antes** da geração do PDF: assim a mensagem sai em ~1 s e os PDFs
+em ~6 s, o que garante a ordem mesmo com as N execuções de um lote correndo em paralelo.
 
 ## O que é dinâmico por termo (desde 23/08/2026)
 
@@ -31,7 +40,8 @@ Webhook (POST /webhook/TERMOS-URC)
 | `seta_Dados` | Lê `documento.tipo`, `documento.nome`, `documento.id` e `documento.html` do payload; sem eles, assume o Termo LGPD |
 | `Saida_HTML` | Usa o HTML do termo recebido como corpo do PDF (título = `NomeDocumento`); fallback = texto do LGPD — ver `Code/Saida_HTML/CHANGELOG.md` |
 | `HTTP Request` | `Gotenberg-Output-Filename` = nome do documento + data |
-| `Enviar texto` | Mensagem cita o nome do documento em vez de fixar "Termo de Consentimento LGPD" |
+| `Monta_Mensagem` | Monta o texto do WhatsApp: consolidado quando o lote tem 2+ documentos, individual quando tem 1 — ver `Code/Monta_Mensagem/CHANGELOG.md` |
+| `Enviar texto` | `messageText` = `{{ $('Monta_Mensagem').first().json.mensagem_texto }}`; a mensagem cita o(s) documento(s) e seus códigos |
 | `Enviar documento` | Nome do PDF = nome do documento (`.pdf`) |
 | `Atualiza Banco de Dados` | Atualiza **`documentos`** (`status = enviado`, `data_envio`) filtrando por `documento.id`; `onError: continueRegularOutput` para nunca impedir o envio |
 
@@ -69,8 +79,8 @@ entradas veio do fluxo LGPD original, que sofria do mesmo problema.
 - `settings` do workflow contém chaves que a API pública rejeita no PUT (`availableInMCP`,
   `timeSavedMode`, `binaryMode`). Ao atualizar por API, envie `settings` só com
   `executionOrder`, `callerPolicy` e `errorWorkflow` — o n8n repõe as demais.
-- O aceite/recusa ainda é tratado pelo fluxo `[Termo LGPD - Assinado]`, que só conhece o LGPD
-  (grava em `parceiros`). Tratar o aceite por documento é a próxima etapa.
+- O aceite/recusa é tratado por documento no fluxo `[Termo URC - Assinado]` (`7ITLaIB5rSc7EoTd`),
+  que identifica o termo pela letra da resposta (`1A`/`2A`).
 
 ## Paginação do PDF (23/08/2026)
 
@@ -105,3 +115,30 @@ Não usar `@page` no CSS: as margens do Gotenberg somariam com as do CSS.
 página (texto extraído do PDF): **14 de 24 casos partiam blocos antes, 0 depois** no fluxo de
 aceite e 8 → 0 no de envio. Os parâmetros do Gotenberg foram testados num workflow temporário
 isolado — nunca nos fluxos de produção — e o PDF final saiu em A4 com o rodapé correto.
+
+## Mensagem única por lote (09/09/2026)
+
+Com a seleção múltipla de termos, um clique com 3 documentos disparava 3 execuções deste
+fluxo e o cliente recebia **3 mensagens de texto quase idênticas** antes dos 3 PDFs.
+
+Agora o cliente recebe **uma única mensagem** listando todos os documentos com seus códigos,
+seguida dos PDFs (que continuam separados — a Evolution API envia um anexo por mensagem).
+
+Como funciona, já que as execuções são independentes e não se enxergam: **quem decide é o
+sistema**. Ele reserva todas as letras (RPC `preparar_envio_documento`) antes do primeiro
+POST e envia, em todas as N chamadas, o bloco `lote` com a lista completa — marcando
+`enviar_texto: true` em **uma só**. Se essa chamada falhar, a flag passa para a próxima.
+
+Dois nós novos: **`Monta_Mensagem`** (Code) monta o texto e repassa o `enviar_texto`;
+**`Enviar texto?`** (If) deixa passar apenas a execução responsável pela mensagem.
+
+⚠️ **Fan-in em `Download logo`.** Ele passou a receber duas conexões no mesmo input
+(`Enviar texto` e o ramo *false* do `Enviar texto?`). Isso **não** repete o problema de
+23/08 (mensagens duplicadas), porque lá as duas conexões traziam itens na mesma execução;
+aqui o If roteia o item para exatamente uma saída, `alwaysOutputData` fica desligado e a
+cadeia inteira trafega 1 item. Ao mexer no fluxo, conferir na execução que **todo nó sai
+com 1 item** e que o `Enviar texto` aparece como não executado nas chamadas 2..N.
+
+Com **um único documento** — ou com um payload antigo, sem o bloco `lote` — a mensagem é
+byte a byte a mesma de antes (verificado com `assert.strictEqual` contra a renderização da
+expressão anterior).

@@ -1711,7 +1711,7 @@ body {
     background: #fff;
     border: 1px solid #dde3ea;
     border-radius: 10px;
-    padding: 16px;
+    padding: 16px 16px 16px 48px; /* 48px a esquerda: espaco do checkbox de selecao */
     cursor: pointer;
     transition: all 0.15s ease;
 }
@@ -2560,4 +2560,234 @@ body {
 .alerta-exclusao strong {
     display: block;
     margin-bottom: 2px;
+}
+
+/* ============================================
+   TERMOS URC — Seleção múltipla de documentos (Tela 2)
+   ============================================ */
+
+/* Checkbox do card de termo (o .doc-card-ic segue no canto superior direito) */
+.doc-card-chk {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border: 2px solid #b9c4d1;
+    border-radius: 6px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    color: #fff;
+    transition: all 0.15s ease;
+}
+
+.doc-card-chk::after {
+    content: "✔";
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.doc-card-sel {
+    border-color: #28a745;
+    background: #f6fff8;
+    box-shadow: 0 4px 14px rgba(40, 167, 69, 0.18);
+}
+
+.doc-card-sel:hover {
+    border-color: #28a745;
+    box-shadow: 0 4px 14px rgba(40, 167, 69, 0.28);
+}
+
+.doc-card-sel .doc-card-chk {
+    background: #28a745;
+    border-color: #28a745;
+}
+
+.doc-card-sel .doc-card-chk::after {
+    opacity: 1;
+}
+
+.doc-sel-acoes {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+/* Barra de seleção: fica FORA do .info-card, que tem overflow:hidden e
+   impediria o position:sticky de funcionar. */
+.selbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: #fff;
+    border: 1px solid #dde3ea;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.06);
+}
+
+.selbar-info {
+    font-size: 0.85rem;
+    color: #213b58;
+}
+
+.selbar-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.count-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 50%;
+    background: #28a745;
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.8rem;
+    margin-right: 4px;
+}
+
+.doc-chip {
+    display: inline-block;
+    background-color: #eef4ff;
+    border: 1px solid #cfe0ff;
+    color: #0056a6;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+    .selbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .selbar .btn-salvar {
+        width: 100%;
+    }
+}
+
+/* ============================================
+   TERMOS URC — Abas de documentos (Tela 3) e envio em lote (Tela 4)
+   ============================================ */
+
+.doctabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.doctab {
+    background: #eef1f4;
+    border: 1px solid #dde3ea;
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #4a5b6e;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.doctab:hover {
+    border-color: #0056a6;
+    color: #0056a6;
+}
+
+.doctab-on {
+    background: #0056a6;
+    border-color: #0056a6;
+    color: #fff;
+}
+
+.doctab-on:hover {
+    color: #fff;
+}
+
+/* Ponto âmbar: ainda há campo editável em branco nesta aba (só sinaliza) */
+.doctab-pendente::after {
+    content: " •";
+    color: #f5a623;
+    font-size: 1.2rem;
+    line-height: 0;
+}
+
+.doc-form[hidden],
+.doc-preview[hidden] {
+    display: none !important;
+}
+
+.envio-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+/* Aviso âmbar do envio parcial (parte dos documentos enviada) */
+.documento-aviso-alerta {
+    background-color: #fff8e1;
+    color: #6b5200;
+    border: 1px solid #ffe082;
+}
+
+.documento-aviso ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+
+.documento-aviso li {
+    margin-bottom: 4px;
+}
+
+/* ============================================
+   TERMOS URC — Botão de limpar filtros (Lista de Clientes)
+   ============================================ */
+
+.btn-limpar-filtros {
+    background-color: #fff;
+    color: #0056a6;
+    border: 1px solid #0056a6;
+    padding: 8px 20px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    height: 38px;
+    white-space: nowrap;
+}
+
+.btn-limpar-filtros:hover:not(:disabled) {
+    background-color: #eef4ff;
+}
+
+/* Sem filtro preenchido não há o que limpar */
+.btn-limpar-filtros:disabled {
+    background-color: #f1f3f5;
+    color: #adb5bd;
+    border-color: #dee2e6;
+    cursor: not-allowed;
 }

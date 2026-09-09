@@ -104,6 +104,13 @@
                     <i class="fas fa-filter"></i>
                     Filtrar
                 </button>
+                <!-- Nasce desabilitado: sem filtro não há o que limpar, e assim o
+                     primeiro paint já sai no estado certo, sem piscar -->
+                <button class="btn-limpar-filtros" id="btn-limpar-filtros" type="button" disabled
+                        onclick="limparFiltrosParceiros()" title="Limpar os filtros e mostrar todos os documentos">
+                    <i class="fas fa-filter-circle-xmark"></i>
+                    Limpar
+                </button>
             </div>
         </div>
 

@@ -5,9 +5,8 @@
 | **Envio** do documento (sistema → cliente) | `POST /webhook/TERMOS-URC` | `[Termo URC - Envio sem assinar]` (`Hqfoa19HyX4QFOqW`) |
 | **Resposta** do cliente (WhatsApp → sistema) | `POST /webhook/TERMOS-URC-ASSINADOS` | `[Termo URC - Assinado]` (`7ITLaIB5rSc7EoTd`) |
 
-> ⚠️ A Evolution API ainda envia as respostas para o webhook do fluxo antigo
-> (`/webhook/ec9aeb71-…`, `[Termo LGPD - Assinado]`). Ver "Ativação" em
-> `fluxos/[Termo URC - Assinado]/README.md`.
+> Desde 23/08/2026 a Evolution API aponta para `/webhook/TERMOS-URC-ASSINADOS` e os dois
+> fluxos LGPD antigos estão desativados (os endereços antigos respondem 404).
 
 ## 1. Envio
 
@@ -15,8 +14,8 @@
 POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC
 ```
 
-- **Fluxo**: `[Termo URC - Envio sem assinar]` (id `Hqfoa19HyX4QFOqW`, ativo) — cópia do fluxo do LGPD, em ajuste.
-- **Chamado por**: `confirmarEnvioDocumento()` → `enviarDocumentoWebhook()` em `js/documentos.js`.
+- **Fluxo**: `[Termo URC - Envio sem assinar]` (id `Hqfoa19HyX4QFOqW`, ativo).
+- **Chamado por**: `confirmarEnvioEmLote()` → `enviarDocumentoWebhook()` em `js/documentos.js`.
 - **Todos os termos** passam por aqui, inclusive o `termo-lgpd` (o webhook antigo `/fba3c3cd-...` não é mais chamado pelo front).
 - Em sucesso: `documentos.status = 'enviado'` + `data_envio`; para o LGPD, também grava `parceiros.data_envio`.
 
@@ -38,6 +37,7 @@ conforme for evoluindo.
     "id": "<uuid do registro em public.documentos>",
     "tipo": "formalizacao",              // slug do catálogo TERMOS_URC
     "nome": "Termo de Responsabilidade — Formalização",
+    "codigo": "A",                       // letra da resposta (cliente manda 1A / 2A)
     "html": "<h3>TERMO ...</h3><p>...",  // termo já preenchido, pronto p/ PDF
     "campos": { "nome": "...", "cpf": "...", "observacoes": "...", "...": "..." }
   },
@@ -59,9 +59,47 @@ conforme for evoluindo.
   },
 
   "consultor": "Administrador SEBRAE",
-  "enviado_em": "2026-08-23T15:12:00.000Z"
+  "enviado_em": "2026-08-23T15:12:00.000Z",
+
+  // Só quando o consultor envia vários termos no mesmo clique — ver abaixo
+  "lote": {
+    "total": 3,
+    "indice": 1,
+    "enviar_texto": true,
+    "documentos": [
+      { "tipo": "termo-lgpd", "nome": "Termo LGPD", "codigo": "A" },
+      { "tipo": "parcelamento-mei", "nome": "Parcelamento de Débitos do MEI — Termo de Ciência e Responsabilidade", "codigo": "B" },
+      { "tipo": "declaracao-responsabilidade", "nome": "Declaração de Responsabilidade", "codigo": "C" }
+    ]
+  }
 }
 ```
+
+## Envio em lote (mais de um documento)
+
+Um clique com N documentos dispara **N chamadas** a este webhook — uma por documento, em
+sequência. Cada execução gera e envia **um** PDF (a Evolution API manda um anexo por
+mensagem). O que muda com o bloco `lote` é a **mensagem de texto**: em vez de N textos
+quase iguais, o cliente recebe **um só**, listando todos os documentos e seus códigos.
+
+| Campo | Significado |
+|---|---|
+| `total` | Quantos documentos este clique está enviando |
+| `indice` | Posição deste documento no lote (1-based, para depuração) |
+| `enviar_texto` | **Esta** chamada é a responsável pela mensagem de texto |
+| `documentos[]` | O lote inteiro (`tipo`, `nome`, `codigo`), na ordem escolhida pelo consultor |
+
+Regras:
+
+- A lista completa vai em **todas** as N chamadas — se a primeira falhar, a seguinte monta
+  a mesma mensagem.
+- `enviar_texto` é `true` em **exatamente uma** chamada. O sistema só baixa essa flag
+  quando o POST é aceito, então uma falha no primeiro documento passa a responsabilidade
+  para o próximo.
+- Para isso, o sistema reserva **todas** as letras (RPC `preparar_envio_documento`, serial)
+  antes de disparar o primeiro POST.
+- **Retrocompatível**: sem o bloco `lote`, ou com `total: 1`, o fluxo monta a mensagem
+  individual de sempre.
 
 ## Tipos de documento (`documento.tipo`)
 
@@ -101,7 +139,10 @@ porque deduzir intenção de texto livre poderia registrar um aceite indevido.
 
 ## Próximos ajustes
 
-1. **Apontar a Evolution API** para `/webhook/TERMOS-URC-ASSINADOS` e desativar `[Termo LGPD - Assinado]`.
-2. Upload do PDF assinado no FOCO (`ContentVersion` + `ContentDocumentLink` na interação/Case) e `salvo_foco = true`.
-3. Migrar a fonte de verdade do LGPD de `parceiros` para `documentos` (hoje a lista deriva das flags).
-4. Tirar a anon key hardcoded do nó `Envio Documento Supabase`.
+1. Tirar a anon key e as credenciais do FOCO **hardcoded em nós** da instância, migrando para
+   credenciais do n8n.
+2. Remover a redundância do `data_envio`, gravado pelo fluxo **e** pelo sistema.
+
+Concluídos: Evolution API reapontada e fluxos LGPD desativados (23/08/2026); upload do PDF
+assinado no FOCO com `salvo_foco = true` (23/08/2026); telas passando a ler o LGPD do
+registro em `documentos` em vez das flags de `parceiros` (09/09/2026).

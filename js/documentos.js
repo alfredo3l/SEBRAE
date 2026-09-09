@@ -83,6 +83,20 @@ function dataHojeBR() {
     return formatarDataSebrae(new Date());   // horário de MS (js/datas.js)
 }
 
+/*
+ * Telefone e e-mail são dados do CLIENTE e editáveis em TODOS os termos
+ * (inclusive no LGPD): o botão "Salvar contato do cliente" grava em parceiros
+ * e sincroniza Phone/Email do Contact no FOCO.
+ */
+const CAMPO_TELEFONE = {
+    id: 'telefone', label: 'Telefone (WhatsApp)', placeholder: '(00)00000-0000',
+    valor: c => c.parceiro.telefone || ''
+};
+const CAMPO_EMAIL = {
+    id: 'email', label: 'E-mail', placeholder: 'email@exemplo.com',
+    valor: c => c.parceiro.email || c.foco?.Email || ''
+};
+
 /**
  * Campos-base comuns a todos os termos editáveis (formulário padrão da POC —
  * Tela 3): Nome, CPF, CNPJ, Telefone, E-mail, Account ID, Nº interação, Data.
@@ -95,8 +109,8 @@ function camposBaseTermo() {
         // só fica editável quando o cadastro do FOCO não traz a informação.
         { id: 'cnpj', label: 'CNPJ', autoFoco: true, mascara: 'cnpj', placeholder: '00.000.000/0000-00',
           valor: c => c.foco?.Account?.CNPJ__c || '' },
-        { id: 'telefone', label: 'Telefone (WhatsApp)', valor: c => c.parceiro.telefone || '', placeholder: '(00)00000-0000' },
-        { id: 'email', label: 'E-mail', valor: c => c.parceiro.email || c.foco?.Email || '', placeholder: 'email@exemplo.com' },
+        CAMPO_TELEFONE,
+        CAMPO_EMAIL,
         { id: 'account_id', label: 'Account ID', auto: true, valor: c => c.parceiro.id_salesforce || c.foco?.AccountId || '—' },
         { id: 'interacao', label: 'Nº do processo / interação', auto: true, valor: c => c.interacao?.CaseNumber || '—' },
         { id: 'data', label: 'Data do atendimento', auto: true, valor: () => dataHojeBR() }
@@ -128,13 +142,14 @@ const TERMOS_URC = {
 
     'termo-lgpd': {
         titulo: 'Termo LGPD',
-        descricao: 'Termo de Consentimento LGPD — preenchimento 100% automático (FOCO). Sem edição.',
-        envioDireto: true,
+        descricao: 'Termo de Consentimento LGPD — preenchimento automático (FOCO). Telefone e e-mail editáveis.',
         campos: [
             { id: 'nome', label: 'Nome/Razão Social', auto: true, valor: c => c.parceiro.nome_razao_social },
             { id: 'cpf', label: 'CPF', auto: true, valor: c => c.parceiro.cpf },
-            { id: 'telefone', label: 'Telefone (WhatsApp)', auto: true, valor: c => c.parceiro.telefone },
-            { id: 'email', label: 'E-mail', auto: true, valor: c => c.parceiro.email || c.foco?.Email || '—' },
+            // Contato editável: o consultor corrige aqui e "Salvar contato do
+            // cliente" grava no cadastro e sincroniza no FOCO
+            CAMPO_TELEFONE,
+            CAMPO_EMAIL,
             { id: 'account_id', label: 'Account ID', auto: true, valor: c => c.parceiro.id_salesforce || c.foco?.AccountId || '—' },
             { id: 'interacao', label: 'Nº do processo / interação', auto: true, valor: c => c.interacao?.CaseNumber || '—' },
             { id: 'data', label: 'Data do atendimento', auto: true, valor: () => dataHojeBR() }
@@ -155,7 +170,9 @@ const TERMOS_URC = {
     },
 
     'parcelamento-mei': {
-        titulo: 'Parcelamento de Débitos do MEI — Termo de Ciência e Responsabilidade',
+        // "RFB" no título para não confundir com o parcelamento da PGFN; o nome
+        // oficial completo continua no <h3> do próprio documento
+        titulo: 'Parcelamento de Débitos do MEI — RFB',
         descricao: 'Parcelamento dos débitos junto à Receita Federal do Brasil (Portal do Simples Nacional).',
         campos: [
             ...camposBaseTermo(),
@@ -409,10 +426,36 @@ const TERMOS_URC = {
 
 let _docParceiro = null;
 let _docContexto = null;   // { parceiro, foco, interacao }
-let _docTipo = null;
-let _docRegistroId = null; // id do registro em public.documentos (status Gerado/Enviado)
-let _docRegistroStatus = null; // status do registro retomado
-let _docCnpjSalvo = null;  // CNPJ gravado no documento retomado (para avisar divergência)
+
+// A página trata de UM cliente e de N termos (um por aba)
+let _docTipos = [];        // slugs selecionados, deduplicados, na ordem escolhida
+let _docTipoAtivo = null;  // slug da aba visível
+const _docEstado = {};     // slug -> { registroId, registroStatus, cnpjSalvo, enviado, codigo, tocado }
+
+// Telefone, e-mail e CNPJ são dados do CLIENTE: o que for digitado numa aba
+// vale para todas (e para todos os payloads do lote).
+const CAMPOS_CLIENTE = ['telefone', 'email', 'cnpj'];
+
+/** Estado de um documento do lote, criado sob demanda */
+function estadoDoc(slug) {
+    if (!_docEstado[slug]) {
+        _docEstado[slug] = {
+            registroId: null, registroStatus: null, cnpjSalvo: null,
+            enviado: false, codigo: null, tocado: false
+        };
+    }
+    return _docEstado[slug];
+}
+
+/** Formulário (um por termo) do documento */
+function formDoDocumento(slug) {
+    return document.querySelector(`#documento-forms form[data-tipo="${slug}"]`);
+}
+
+/** Pré-visualização (uma por termo) do documento */
+function previewDoDocumento(slug) {
+    return document.querySelector(`#documento-previews .doc-preview[data-tipo="${slug}"]`);
+}
 
 // ===== Renderização do formulário =====
 
@@ -491,9 +534,9 @@ function renderCampoDocumento(campo, ctx) {
  * Aplica no formulário os valores salvos em documentos.dados_formulario
  * (retomada de um documento já gerado).
  */
-function aplicarDadosNoFormulario(dados) {
+function aplicarDadosNoFormulario(slug, dados) {
     if (!dados) return;
-    const form = document.getElementById('documento-form');
+    const form = formDoDocumento(slug);
     if (!form) return;
 
     // "select" entra na varredura por causa da lista de CNPJs do FOCO
@@ -505,7 +548,7 @@ function aplicarDadosNoFormulario(dados) {
         else inp.value = valor ?? '';
     });
 
-    atualizarPreviewDocumento();
+    atualizarPreviewDocumento(slug);
 }
 
 /**
@@ -518,7 +561,12 @@ function aplicarDadosNoFormulario(dados) {
  * estar digitando em outro campo e o listener de preview seria reanexado).
  */
 function aplicarCnpjDoFoco(lista) {
-    const form = document.getElementById('documento-form');
+    _docTipos.forEach(slug => aplicarCnpjNoForm(slug, lista));
+}
+
+/** Aplica o CNPJ do FOCO no formulário de um termo (ver aplicarCnpjDoFoco) */
+function aplicarCnpjNoForm(slug, lista) {
+    const form = formDoDocumento(slug);
     if (!form) return;
     const grupo = form.querySelector('.doc-form-group[data-campo="cnpj"]');
     if (!grupo) return; // termo sem campo de CNPJ (ex.: termo-lgpd)
@@ -573,7 +621,7 @@ function aplicarCnpjDoFoco(lista) {
         }
     }
 
-    atualizarPreviewDocumento();
+    atualizarPreviewDocumento(slug);
 }
 
 /**
@@ -582,29 +630,36 @@ function aplicarCnpjDoFoco(lista) {
  * O documento já gravado não é alterado — só o que for gerado de novo.
  */
 function avisarDivergenciaCNPJ() {
-    if (!_docCnpjSalvo) return;
-    if (!['enviado', 'aceito', 'recusado', 'nao_aceito'].includes(_docRegistroStatus)) return;
-
-    const campo = document.querySelector('#documento-form [name="cnpj"]');
-    const atual = campo ? campo.value : '';
-    if (!temValor(atual) || digitosCNPJ(atual) === digitosCNPJ(_docCnpjSalvo)) return;
-
     const aviso = document.getElementById('documento-aviso');
     if (!aviso) return;
-    aviso.innerHTML += `<br><b>Atenção:</b> o CNPJ deste documento (${escHTML(_docCnpjSalvo)}) ` +
-        `difere do cadastro atual do FOCO (${escHTML(atual)}). ` +
-        'Ao gerar novamente, o termo passará a usar o do FOCO.';
-    aviso.style.display = 'block';
+
+    _docTipos.forEach(slug => {
+        const est = estadoDoc(slug);
+        if (!est.cnpjSalvo) return;
+        if (!['enviado', 'aceito', 'recusado', 'nao_aceito'].includes(est.registroStatus)) return;
+
+        const campo = formDoDocumento(slug)?.querySelector('[name="cnpj"]');
+        const atual = campo ? campo.value : '';
+        if (!temValor(atual) || digitosCNPJ(atual) === digitosCNPJ(est.cnpjSalvo)) return;
+
+        const nome = _docTipos.length > 1 ? `${TERMOS_URC[slug].titulo}: ` : '';
+        aviso.innerHTML += `<br><b>Atenção:</b> ${escHTML(nome)}o CNPJ deste documento (${escHTML(est.cnpjSalvo)}) ` +
+            `difere do cadastro atual do FOCO (${escHTML(atual)}). ` +
+            'Ao gerar novamente, o termo passará a usar o do FOCO.';
+        aviso.style.display = 'block';
+    });
 }
 
 /**
- * Carrega o registro de documentos a ser retomado:
- * - por id (?doc=<uuid>, vindo do Acompanhamento), ou
- * - o rascunho "gerado" mais recente deste parceiro+tipo (evita duplicar
+ * Carrega os registros de documentos a serem retomados:
+ * - por id (?doc=<uuid>, vindo do Acompanhamento, sempre 1 documento), ou
+ * - o rascunho "gerado" mais recente de cada tipo selecionado (evita duplicar
  *   registro quando o consultor reabre o termo pelo Detalhe).
  * Registros já enviados/aceitos não são reaproveitados sem ?doc explícito.
+ * Devolve um objeto { slug: registro }.
  */
-async function carregarDocumentoExistente(docId) {
+async function carregarDocumentosExistentes(docId) {
+    const achados = {};
     try {
         let query = supabaseClient.from('documentos').select('*');
 
@@ -613,28 +668,33 @@ async function carregarDocumentoExistente(docId) {
         } else {
             query = query
                 .eq('parceiro_id', _docParceiro.id)
-                .eq('tipo_documento', _docTipo)
+                .in('tipo_documento', _docTipos)
                 .eq('status', 'gerado')
-                .order('created_at', { ascending: false })
-                .limit(1);
+                .order('created_at', { ascending: false });
         }
 
         const { data, error } = await query;
-        if (error || !data || data.length === 0) return null;
+        if (error || !data || data.length === 0) return achados;
 
-        const registro = data[0];
-        _docRegistroId = registro.id;
-        return registro;
+        // Ordenado do mais recente para o mais antigo: fica o primeiro de cada tipo
+        data.forEach(registro => {
+            const slug = registro.tipo_documento;
+            if (!_docTipos.includes(slug) || achados[slug]) return;
+            achados[slug] = registro;
+            estadoDoc(slug).registroId = registro.id;
+        });
+        return achados;
     } catch (e) {
-        console.warn('documentos (carregar existente):', e?.message || e);
-        return null;
+        console.warn('documentos (carregar existentes):', e?.message || e);
+        return achados;
     }
 }
 
-/** Lê todos os valores do formulário para um objeto { name: valor } */
-function lerDadosFormularioDocumento() {
-    const form = document.getElementById('documento-form');
+/** Lê todos os valores do formulário de um termo para um objeto { name: valor } */
+function lerDadosFormularioDocumento(slug = _docTipoAtivo) {
+    const form = formDoDocumento(slug);
     const dados = {};
+    if (!form) return dados;
     // "select" entra na varredura por causa da lista de CNPJs do FOCO
     form.querySelectorAll('input, textarea, select').forEach(inp => {
         if (inp.type === 'checkbox') dados[inp.name] = inp.checked;
@@ -644,11 +704,52 @@ function lerDadosFormularioDocumento() {
     return dados;
 }
 
-function atualizarPreviewDocumento() {
-    const termo = TERMOS_URC[_docTipo];
-    const preview = document.getElementById('documento-preview');
+function atualizarPreviewDocumento(slug = _docTipoAtivo) {
+    const termo = TERMOS_URC[slug];
+    const preview = previewDoDocumento(slug);
     if (!termo || !preview) return;
-    preview.innerHTML = termo.template(lerDadosFormularioDocumento());
+    preview.innerHTML = termo.template(lerDadosFormularioDocumento(slug));
+}
+
+/**
+ * Telefone/e-mail/CNPJ são do cliente, não do documento: o valor digitado numa
+ * aba é replicado nas demais. Campos travados (readOnly) e o <select> de CNPJ
+ * vêm do FOCO e não são tocados. Definir .value por script não dispara
+ * "input", então não há laço de eventos.
+ */
+function espelharCampoCliente(nome, valor, origem) {
+    _docTipos.forEach(slug => {
+        if (slug === origem) return;
+        const campo = formDoDocumento(slug)?.querySelector(`[name="${nome}"]`);
+        if (!campo || campo.readOnly || campo.tagName === 'SELECT') return;
+        campo.value = valor;
+        atualizarPreviewDocumento(slug);
+    });
+}
+
+/**
+ * Formulário de onde saem telefone/e-mail do cliente: o da aba ativa e, se ele
+ * não tiver esses campos, o primeiro que tiver (com o espelhamento, todos
+ * carregam o mesmo valor).
+ */
+function formContato() {
+    const seletor = '[name="telefone"], [name="email"]';
+    const ativo = formDoDocumento(_docTipoAtivo);
+    if (ativo?.querySelector(seletor)) return ativo;
+    for (const slug of _docTipos) {
+        const form = formDoDocumento(slug);
+        if (form?.querySelector(seletor)) return form;
+    }
+    return null;
+}
+
+/** Telefone e e-mail atualmente digitados nos formulários */
+function dadosContatoAtuais() {
+    const form = formContato();
+    return {
+        telefone: (form?.querySelector('[name="telefone"]')?.value || '').trim(),
+        email: (form?.querySelector('[name="email"]')?.value || '').trim()
+    };
 }
 
 // ===== Ações =====
@@ -668,9 +769,7 @@ async function salvarContatoDoFormulario() {
     const aviso = document.getElementById('contato-aviso');
     if (!btn || !_docParceiro) return;
 
-    const d = lerDadosFormularioDocumento();
-    const telefone = (d.telefone || '').trim();
-    const email = (d.email || '').trim();
+    const { telefone, email } = dadosContatoAtuais();
 
     const mostrar = (classe, texto) => {
         aviso.className = 'documento-aviso ' + classe;
@@ -714,6 +813,10 @@ async function salvarContatoDoFormulario() {
 
         Object.assign(_docParceiro, atualizacao);
         if (typeof invalidarCacheParceiro === 'function') invalidarCacheParceiro(_docParceiro.id);
+
+        // O contato é do cliente: replica o valor salvo em todas as abas
+        if (telefone) espelharCampoCliente('telefone', telefone, null);
+        if (email) espelharCampoCliente('email', email, null);
 
         // 2) Sincronização no FOCO (Contact)
         let msg = 'Contato do cliente atualizado com sucesso.';
@@ -768,15 +871,15 @@ const WEBHOOK_TERMOS_URC = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-UR
  * preenchidos pelo consultor e o HTML já renderizado do termo (pronto para
  * virar PDF), além da interação (Case) do FOCO.
  */
-async function montarPayloadEnvio(codigoResposta) {
-    const termo = TERMOS_URC[_docTipo];
-    const campos = lerDadosFormularioDocumento();
+async function montarPayloadEnvio(slug, codigoResposta, lote) {
+    const termo = TERMOS_URC[slug];
+    const campos = lerDadosFormularioDocumento(slug);
     const p = _docParceiro;
 
     const telefone = campos.telefone || p.telefone || null;
     const email = campos.email || p.email || _docContexto.foco?.Email || null;
 
-    return {
+    const payload = {
         // --- Campos na raiz: compatíveis com o fluxo n8n atual ---
         nome_razao_social: p.nome_razao_social,
         cpf: p.cpf,
@@ -785,8 +888,8 @@ async function montarPayloadEnvio(codigoResposta) {
 
         // --- Dados do documento (para gerar o PDF e identificar o registro) ---
         documento: {
-            id: _docRegistroId,
-            tipo: _docTipo,
+            id: estadoDoc(slug).registroId,
+            tipo: slug,
             nome: termo.titulo,
             // Letra que o cliente usa para responder (ex.: "1A" aceita, "2A" recusa)
             codigo: codigoResposta || null,
@@ -815,14 +918,21 @@ async function montarPayloadEnvio(codigoResposta) {
         consultor: await nomeConsultorAtual(),
         enviado_em: new Date().toISOString()
     };
+
+    // Envio de vários termos no mesmo clique: o lote inteiro vai em todas as
+    // chamadas e só uma delas manda a mensagem de texto (o n8n lê enviar_texto).
+    // Sem lote, o payload fica idêntico ao de um envio avulso.
+    if (lote) payload.lote = lote;
+
+    return payload;
 }
 
 /**
  * Envia o documento para o webhook n8n dos Termos URC.
  * Retorna { ok: true } ou { ok: false, error }.
  */
-async function enviarDocumentoWebhook(codigoResposta) {
-    const payload = await montarPayloadEnvio(codigoResposta);
+async function enviarDocumentoWebhook(slug, codigoResposta, lote) {
+    const payload = await montarPayloadEnvio(slug, codigoResposta, lote);
 
     const resp = await fetch(WEBHOOK_TERMOS_URC, {
         method: 'POST',
@@ -841,10 +951,11 @@ async function enviarDocumentoWebhook(codigoResposta) {
 
 /** Monta a lista de validações automáticas antes do envio (POC Tela 4) */
 function validarDadosEnvio() {
-    const d = lerDadosFormularioDocumento();
+    const contato = dadosContatoAtuais();
     const p = _docParceiro;
-    const telefone = d.telefone || p.telefone || '';
-    const email = d.email || p.email || _docContexto.foco?.Email || '';
+    const telefone = contato.telefone || p.telefone || '';
+    const email = contato.email || p.email || _docContexto.foco?.Email || '';
+    const total = _docTipos.length;
 
     return [
         { label: 'CPF Válido', ok: !!(p.cpf && p.cpf.length === 14) },
@@ -852,7 +963,7 @@ function validarDadosEnvio() {
         { label: 'Nome válido', ok: !!(p.nome_razao_social && p.nome_razao_social.length > 2) },
         { label: 'Telefone válido', ok: telefone.replace(/\D/g, '').length >= 10 },
         { label: 'E-mail válido', ok: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) },
-        { label: 'Documento gerado', ok: true, neutro: true }
+        { label: total > 1 ? `${total} documentos gerados` : 'Documento gerado', ok: true, neutro: true }
     ];
 }
 
@@ -861,18 +972,20 @@ function validarDadosEnvio() {
  * status "gerado" + dados do formulário. Não bloqueia a navegação — em
  * falha, apenas loga (a tela de envio continua funcionando).
  */
-async function registrarDocumentoGerado() {
-    const termo = TERMOS_URC[_docTipo];
+async function registrarDocumentoGerado(slug) {
+    const termo = TERMOS_URC[slug];
+    const est = estadoDoc(slug);
     const consultor = await nomeConsultorAtual();
+    const campos = lerDadosFormularioDocumento(slug);
     const registro = {
         parceiro_id: _docParceiro.id,
-        tipo_documento: _docTipo,
+        tipo_documento: slug,
         nome_documento: termo.titulo,
         status: 'gerado',
-        dados_formulario: lerDadosFormularioDocumento(),
+        dados_formulario: campos,
         // HTML do termo já preenchido: o fluxo de aceite usa isso para gerar
         // o PDF assinado sem depender do front
-        html_documento: termo.template(lerDadosFormularioDocumento()),
+        html_documento: termo.template(campos),
         case_id_salesforce: _docContexto.interacao?.Id || null,
         case_number: _docContexto.interacao?.CaseNumber || null,
         updated_at: new Date().toISOString()
@@ -881,11 +994,11 @@ async function registrarDocumentoGerado() {
     if (consultor) registro.consultor = consultor;
 
     try {
-        if (_docRegistroId) {
+        if (est.registroId) {
             const { error } = await supabaseClient
                 .from('documentos')
                 .update(registro)
-                .eq('id', _docRegistroId);
+                .eq('id', est.registroId);
             if (error) console.warn('documentos (update gerado):', error.message);
         } else {
             const { data, error } = await supabaseClient
@@ -894,7 +1007,7 @@ async function registrarDocumentoGerado() {
                 .select('id')
                 .single();
             if (error) console.warn('documentos (insert gerado):', error.message);
-            else _docRegistroId = data.id;
+            else est.registroId = data.id;
         }
     } catch (e) {
         console.warn('documentos (gerado):', e?.message || e);
@@ -907,11 +1020,12 @@ async function registrarDocumentoGerado() {
  * que dois documentos pendentes do mesmo cliente nunca tenham a mesma letra.
  * Retorna a letra ou null se não for possível.
  */
-async function prepararEnvioDocumento() {
-    if (!_docRegistroId) return null;
+async function prepararEnvioDocumento(slug) {
+    const registroId = estadoDoc(slug).registroId;
+    if (!registroId) return null;
     try {
         const { data, error } = await supabaseClient
-            .rpc('preparar_envio_documento', { p_documento_id: _docRegistroId });
+            .rpc('preparar_envio_documento', { p_documento_id: registroId });
 
         if (error) {
             console.warn('preparar_envio_documento:', error.message);
@@ -925,13 +1039,36 @@ async function prepararEnvioDocumento() {
     }
 }
 
+/**
+ * Gera todos os documentos selecionados e avança para a etapa de envio.
+ * Diferente do fluxo antigo, os registros são gravados COM await: cada id
+ * alimenta a RPC que reserva a letra de resposta no envio.
+ */
+async function gerarTodosEProsseguir() {
+    const btn = document.getElementById('btn-gerar-documento');
+    btn.disabled = true;
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.spinner').style.display = 'inline-block';
+
+    try {
+        for (const slug of _docTipos) {
+            await registrarDocumentoGerado(slug);
+        }
+        mostrarTelaEnvio();
+    } catch (e) {
+        console.warn('documentos (gerar todos):', e?.message || e);
+        mostrarTelaEnvio();
+    } finally {
+        btn.disabled = false;
+        btn.querySelector('.btn-text').style.display = 'flex';
+        btn.querySelector('.spinner').style.display = 'none';
+    }
+}
+
 /** Mostra a etapa "Enviar via WhatsApp" preenchida com os dados do formulário */
 function mostrarTelaEnvio() {
-    const termo = TERMOS_URC[_docTipo];
-    const d = lerDadosFormularioDocumento();
-
-    // Registra o documento como "Gerado" (status da Tela 1) — sem bloquear a UI
-    registrarDocumentoGerado();
+    const total = _docTipos.length;
+    const d = dadosContatoAtuais();
 
     // Validações
     const cont = document.getElementById('envio-validacoes');
@@ -942,15 +1079,31 @@ function mostrarTelaEnvio() {
     }).join('');
 
     // Dados do envio
-    document.getElementById('envio-doc-nome').textContent = termo.titulo;
+    document.getElementById('envio-doc-nome').textContent = total > 1
+        ? `${total} documentos`
+        : `o documento ${TERMOS_URC[_docTipos[0]].titulo}`;
     document.getElementById('envio-dado-nome').textContent = _docParceiro.nome_razao_social || '—';
     document.getElementById('envio-dado-cpf').textContent = _docParceiro.cpf || '—';
     document.getElementById('envio-dado-telefone').textContent = d.telefone || _docParceiro.telefone || '—';
     document.getElementById('envio-dado-email').textContent = d.email || _docParceiro.email || _docContexto.foco?.Email || '—';
     document.getElementById('envio-aviso').style.display = 'none';
 
+    // Lista dos documentos do lote (só faz sentido com 2 ou mais)
+    const chips = document.getElementById('envio-chips');
+    chips.innerHTML = total > 1
+        ? _docTipos.map(s => `<span class="doc-chip"><i class="fas fa-file-lines"></i> ${escHTML(TERMOS_URC[s].titulo)}</span>`).join('')
+        : '';
+
+    document.getElementById('envio-card-titulo').textContent = total > 1
+        ? 'Enviar Documentos via WhatsApp' : 'Enviar Documento via WhatsApp';
+    const btnEnviar = document.getElementById('btn-envio-confirmar');
+    btnEnviar.querySelector('.btn-text').innerHTML = total > 1
+        ? '<i class="fab fa-whatsapp"></i> Enviar todos'
+        : '<i class="fab fa-whatsapp"></i> Enviar';
+
     // Alterna as etapas e o cabeçalho
     document.getElementById('documento-edicao').style.display = 'none';
+    document.getElementById('documento-abas-card').style.display = 'none';
     document.getElementById('documento-envio').style.display = 'block';
     document.getElementById('documento-titulo').textContent = 'Enviar via WhatsApp';
 
@@ -963,85 +1116,297 @@ function mostrarTelaEnvio() {
 
 /** Volta da etapa de envio para a edição do formulário */
 function voltarParaEdicao() {
-    const termo = TERMOS_URC[_docTipo];
     document.getElementById('documento-envio').style.display = 'none';
     document.getElementById('documento-edicao').style.display = 'grid';
-    document.getElementById('documento-titulo').textContent = termo.titulo;
+    if (_docTipos.length > 1) {
+        document.getElementById('documento-abas-card').style.display = 'block';
+    }
+    ativarAbaDocumento(_docTipoAtivo); // restaura os títulos
 
     const btnVoltar = document.getElementById('btn-trocar-documento');
     btnVoltar.innerHTML = '<i class="fas fa-arrow-left"></i> Trocar documento';
     btnVoltar.onclick = null; // volta a usar o href (detalhe)
 }
 
-/** Confirma o envio do documento via WhatsApp (webhook n8n) */
-async function confirmarEnvioDocumento() {
+/**
+ * Envia os documentos selecionados via WhatsApp (webhook n8n), um a um.
+ *
+ * O laço é SERIAL de propósito: preparar_envio_documento() reserva a primeira
+ * letra livre (A, B, C...) e existe índice único parcial
+ * (parceiro_id, codigo_resposta) where status='enviado' — chamadas simultâneas
+ * colidiriam. A falha de um documento não interrompe os demais; um novo clique
+ * reprocessa apenas o que não foi enviado.
+ */
+async function confirmarEnvioEmLote() {
     const aviso = document.getElementById('envio-aviso');
     const btn = document.getElementById('btn-envio-confirmar');
+    const total = _docTipos.length;
 
     btn.disabled = true;
     btn.querySelector('.btn-text').style.display = 'none';
     btn.querySelector('.spinner').style.display = 'inline-block';
-    aviso.style.display = 'none';
 
-    try {
-        // Garante que o documento está registrado (para enviar o id ao n8n)
-        if (!_docRegistroId) await registrarDocumentoGerado();
+    const enviados = [];
+    const falhas = [];
+    const preparados = [];
 
-        // Marca como enviado e reserva a letra de resposta (A, B, C...)
-        const codigo = await prepararEnvioDocumento();
-
-        const resultado = await enviarDocumentoWebhook(codigo);
-
-        if (resultado.ok) {
-            // LGPD: mantém data_envio em parceiros (a lista deriva o status de lá)
-            if (_docTipo === 'termo-lgpd') {
-                await registrarEnvioLGPDNoParceiro(_docParceiro);
-            }
+    const avisar = (texto) => {
+        if (total > 1) {
+            aviso.className = 'documento-aviso';
+            aviso.innerHTML = texto;
+            aviso.style.display = 'block';
+        } else {
+            aviso.style.display = 'none';
         }
+    };
 
-        aviso.className = resultado.ok ? 'documento-aviso documento-aviso-sucesso' : 'documento-aviso documento-aviso-erro';
-        aviso.innerHTML = resultado.ok
-            ? 'Documento enviado com sucesso via WhatsApp!' + (codigo ? ` O cliente deve responder <b>1${codigo}</b> (aceito) ou <b>2${codigo}</b> (não aceito).` : '')
-            : 'Erro ao enviar o documento. Tente novamente.';
-        aviso.style.display = 'block';
-    } catch (err) {
-        console.error('Erro ao enviar documento:', err);
-        aviso.className = 'documento-aviso documento-aviso-erro';
-        aviso.textContent = 'Erro de conexão. Verifique sua internet.';
-        aviso.style.display = 'block';
-    } finally {
+    // ===== Fase 1: reservar a letra de TODOS antes de enviar =====
+    // A mensagem única do WhatsApp lista os documentos com suas letras, então
+    // elas precisam existir antes do primeiro POST.
+    for (let i = 0; i < total; i++) {
+        const slug = _docTipos[i];
+        const est = estadoDoc(slug);
+
+        // Já enviado numa tentativa anterior: não reenvia
+        if (est.enviado) { enviados.push({ slug, codigo: est.codigo }); continue; }
+
+        avisar(`Preparando ${i + 1} de ${total}: <b>${escHTML(TERMOS_URC[slug].titulo)}</b>…`);
+
+        try {
+            // Garante que o documento está registrado (para enviar o id ao n8n)
+            if (!est.registroId) await registrarDocumentoGerado(slug);
+            if (!est.registroId) {
+                falhas.push({ slug, motivo: 'não foi possível registrar o documento' });
+                continue;
+            }
+
+            // Marca como enviado e reserva a letra de resposta (A, B, C...)
+            const codigo = await prepararEnvioDocumento(slug);
+            if (!codigo) {
+                // Sem letra o cliente não teria como responder — não envia
+                falhas.push({ slug, motivo: 'não foi possível reservar a letra de resposta' });
+                continue;
+            }
+
+            est.codigo = codigo;
+            preparados.push({ slug, codigo });
+        } catch (err) {
+            console.error('Erro ao preparar documento', slug, err);
+            falhas.push({ slug, motivo: err?.message || 'erro ao preparar o documento' });
+        }
+    }
+
+    // ===== Fase 2: enviar =====
+    // O lote inteiro vai em todas as chamadas; só uma delas manda a mensagem de
+    // texto (o n8n obedece a `enviar_texto`). "textoPendente" só baixa quando um
+    // POST é aceito — se o primeiro falhar, quem manda o texto é o seguinte.
+    const loteDocs = preparados.map(p => ({
+        tipo: p.slug,
+        nome: TERMOS_URC[p.slug].titulo,
+        codigo: p.codigo
+    }));
+    let textoPendente = loteDocs.length > 0;
+
+    for (let i = 0; i < preparados.length; i++) {
+        const { slug, codigo } = preparados[i];
+        const est = estadoDoc(slug);
+
+        avisar(`Enviando ${i + 1} de ${preparados.length}: <b>${escHTML(TERMOS_URC[slug].titulo)}</b>…`);
+
+        try {
+            const lote = {
+                total: loteDocs.length,
+                indice: i + 1,
+                enviar_texto: textoPendente,
+                documentos: loteDocs
+            };
+            const resultado = await enviarDocumentoWebhook(slug, codigo, lote);
+            if (resultado.ok) {
+                textoPendente = false;
+                est.enviado = true;
+                est.registroStatus = 'enviado';
+                enviados.push({ slug, codigo });
+            } else {
+                falhas.push({ slug, motivo: resultado.error || 'falha no envio' });
+            }
+        } catch (err) {
+            console.error('Erro ao enviar documento', slug, err);
+            falhas.push({ slug, motivo: err?.message || 'erro de conexão' });
+        }
+    }
+
+    // LGPD: mantém data_envio em parceiros (a lista deriva o status de lá)
+    if (enviados.some(e => e.slug === 'termo-lgpd')) {
+        try {
+            await registrarEnvioLGPDNoParceiro(_docParceiro);
+        } catch (e) {
+            console.warn('registrarEnvioLGPDNoParceiro:', e?.message || e);
+        }
+    }
+
+    mostrarResultadoEnvio(enviados, falhas);
+
+    if (falhas.length === 0) {
+        // Sucesso total: trava o botão para não reenviar por engano
+        btn.querySelector('.btn-text').innerHTML = '<i class="fas fa-check"></i> Enviado';
+        btn.querySelector('.btn-text').style.display = 'flex';
+        btn.querySelector('.spinner').style.display = 'none';
+    } else {
         btn.disabled = false;
+        btn.querySelector('.btn-text').innerHTML = enviados.length
+            ? '<i class="fab fa-whatsapp"></i> Enviar novamente'
+            : (_docTipos.length > 1 ? '<i class="fab fa-whatsapp"></i> Enviar todos' : '<i class="fab fa-whatsapp"></i> Enviar');
         btn.querySelector('.btn-text').style.display = 'flex';
         btn.querySelector('.spinner').style.display = 'none';
     }
 }
 
+/** Escreve o resultado do envio (total, parcial ou nenhum) no aviso da tela */
+function mostrarResultadoEnvio(enviados, falhas) {
+    const aviso = document.getElementById('envio-aviso');
+    const linhaEnviado = e => `<li><b>${escHTML(TERMOS_URC[e.slug].titulo)}</b> — responder ` +
+        `<b>1${e.codigo}</b> (aceito) ou <b>2${e.codigo}</b> (não aceito)</li>`;
+    const linhaFalha = f => `<li><b>${escHTML(TERMOS_URC[f.slug].titulo)}</b> — ${escHTML(f.motivo)}</li>`;
+
+    if (falhas.length === 0) {
+        aviso.className = 'documento-aviso documento-aviso-sucesso';
+        aviso.innerHTML = enviados.length > 1
+            ? `${enviados.length} documentos enviados com sucesso via WhatsApp!<ul>${enviados.map(linhaEnviado).join('')}</ul>`
+            : `Documento enviado com sucesso via WhatsApp! O cliente deve responder ` +
+              `<b>1${enviados[0].codigo}</b> (aceito) ou <b>2${enviados[0].codigo}</b> (não aceito).`;
+    } else if (enviados.length === 0) {
+        aviso.className = 'documento-aviso documento-aviso-erro';
+        aviso.innerHTML = falhas.length > 1
+            ? `Nenhum documento foi enviado.<ul>${falhas.map(linhaFalha).join('')}</ul>`
+            : `Erro ao enviar o documento: ${escHTML(falhas[0].motivo)}. Tente novamente.`;
+    } else {
+        aviso.className = 'documento-aviso documento-aviso-alerta';
+        aviso.innerHTML = `<b>Enviados ${enviados.length} de ${enviados.length + falhas.length}.</b>` +
+            `<ul>${enviados.map(linhaEnviado).join('')}</ul>` +
+            `<b>Não enviados:</b><ul>${falhas.map(linhaFalha).join('')}</ul>` +
+            'Clique em <b>Enviar novamente</b> para tentar só os que falharam, ' +
+            'ou reenvie pelo Acompanhamento (a letra de resposta é preservada).';
+    }
+    aviso.style.display = 'block';
+}
+
+// ===== Abas dos documentos selecionados (Tela 3 da POC) =====
+
+// Campos que podem ficar em branco sem que a aba conte como pendente
+const CAMPOS_OPCIONAIS_DOC = ['observacoes', 'documentos_outros', 'rg'];
+
+/** Monta a barra de abas — só aparece quando há 2 ou mais documentos */
+function montarAbasDocumentos() {
+    const card = document.getElementById('documento-abas-card');
+    const barra = document.getElementById('documento-abas');
+    if (!card || !barra) return;
+
+    if (_docTipos.length <= 1) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+    barra.innerHTML = _docTipos.map((slug, i) =>
+        `<button type="button" class="doctab" data-tipo="${slug}" onclick="ativarAbaDocumento('${slug}')">` +
+        `${i + 1}. ${escHTML(TERMOS_URC[slug].titulo)}</button>`
+    ).join('');
+}
+
+/**
+ * Mostra a aba de um documento. Nada é re-renderizado: os formulários e as
+ * pré-visualizações de todos os termos ficam no DOM e só alternam a
+ * visibilidade — o que já foi digitado nunca se perde.
+ */
+function ativarAbaDocumento(slug) {
+    if (!TERMOS_URC[slug]) return;
+    _docTipoAtivo = slug;
+
+    _docTipos.forEach(s => {
+        const form = formDoDocumento(s);
+        const preview = previewDoDocumento(s);
+        if (form) form.hidden = (s !== slug);
+        if (preview) preview.hidden = (s !== slug);
+    });
+
+    document.querySelectorAll('#documento-abas .doctab').forEach(botao =>
+        botao.classList.toggle('doctab-on', botao.dataset.tipo === slug));
+
+    const termo = TERMOS_URC[slug];
+    const formTitulo = document.getElementById('documento-form-titulo');
+    if (formTitulo) formTitulo.textContent = termo.titulo;
+
+    const titulo = document.getElementById('documento-titulo');
+    if (titulo) {
+        titulo.textContent = _docTipos.length > 1
+            ? `Editar e Preencher Documentos (${_docTipos.indexOf(slug) + 1}/${_docTipos.length})`
+            : termo.titulo;
+    }
+}
+
+/** Há campo editável de texto ainda em branco nesta aba? (só sinaliza) */
+function abaPendente(slug) {
+    const form = formDoDocumento(slug);
+    if (!form) return false;
+    return [...form.querySelectorAll('input[type="text"]:not([readonly]), textarea')]
+        .some(campo => !CAMPOS_OPCIONAIS_DOC.includes(campo.name) && !campo.value.trim());
+}
+
+/** Marca com um ponto âmbar as abas que ainda têm campos em branco */
+function marcarAbasPendentes() {
+    document.querySelectorAll('#documento-abas .doctab').forEach(botao =>
+        botao.classList.toggle('doctab-pendente', abaPendente(botao.dataset.tipo)));
+}
+
 // ===== Inicialização =====
 
+/**
+ * Slugs válidos vindos da URL: ?tipos=a,b,c (seleção múltipla) ou ?tipo=a
+ * (link direto). Duplicados são descartados preservando a ordem escolhida.
+ * Com ?doc=<uuid> a retomada é sempre de um único documento.
+ */
+function normalizarTiposDaURL(params) {
+    const bruto = params.get('tipos') || params.get('tipo') || '';
+    const tipos = [];
+    bruto.split(',').forEach(item => {
+        const slug = item.trim();
+        if (slug && TERMOS_URC[slug] && !tipos.includes(slug)) tipos.push(slug);
+    });
+    return params.get('doc') ? tipos.slice(0, 1) : tipos;
+}
+
 async function inicializarPaginaDocumento() {
-    const container = document.getElementById('documento-form-container');
+    const container = document.getElementById('documento-forms');
     if (!container) return; // não é a página de documento
 
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
-    _docTipo = params.get('tipo');
-    const termo = TERMOS_URC[_docTipo];
+    _docTipos = normalizarTiposDaURL(params);
+    _docTipoAtivo = _docTipos[0] || null;
 
     const tituloEl = document.getElementById('documento-titulo');
     const formTituloEl = document.getElementById('documento-form-titulo');
 
-    if (!id || !termo) {
+    if (!id || !_docTipos.length) {
         if (tituloEl) tituloEl.textContent = 'Documento não encontrado';
         container.innerHTML = '<p>Tipo de documento inválido ou cliente não informado.</p>';
         return;
     }
 
-    if (tituloEl) tituloEl.textContent = termo.titulo;
-    if (formTituloEl) formTituloEl.textContent = termo.titulo;
-    document.title = `SEBRAE - TERMOS URC - ${termo.titulo}`;
+    const varios = _docTipos.length > 1;
+    const tituloPagina = varios ? 'Editar e Preencher Documentos' : TERMOS_URC[_docTipoAtivo].titulo;
+    if (tituloEl) tituloEl.textContent = tituloPagina;
+    if (formTituloEl) formTituloEl.textContent = TERMOS_URC[_docTipoAtivo].titulo;
+    document.title = `SEBRAE - TERMOS URC - ${tituloPagina}`;
 
     // Botões de navegação
     document.getElementById('btn-trocar-documento').href = `detalhe?id=${encodeURIComponent(id)}`;
+    if (varios) {
+        document.getElementById('btn-trocar-documento').innerHTML =
+            '<i class="fas fa-arrow-left"></i> Trocar seleção';
+        document.getElementById('btn-gerar-documento').querySelector('.btn-text').innerHTML =
+            '<i class="fas fa-file-pdf"></i> Gerar todos e prosseguir';
+    }
     document.getElementById('btn-cancelar-documento').onclick = voltarParaDetalhe;
 
     // Carrega o parceiro — usa o cache da sessão quando disponível (render imediato)
@@ -1082,27 +1447,46 @@ async function inicializarPaginaDocumento() {
     const chaveFoco = 'sbr_foco_' + (parceiro.cpf || '').replace(/\D/g, '');
     const focoCache = (typeof cacheNavGet === 'function') ? cacheNavGet(chaveFoco) : null;
     _docContexto = { parceiro, foco: focoCache?.contato || null, interacao: null };
-    renderFormularioDocumento(termo);
+
+    // Um formulário e uma pré-visualização por termo; só o da aba ativa aparece
+    _docTipos.forEach(slug => renderFormularioDocumento(slug));
+    montarAbasDocumentos();
+    ativarAbaDocumento(_docTipoAtivo);
+
     if (focoCache?.contatos) aplicarCnpjDoFoco(cnpjsDosContatos(focoCache.contatos));
 
-    // Retomada: documento já gerado (?doc=<id>) ou rascunho existente
-    const registroExistente = await carregarDocumentoExistente(params.get('doc'));
-    if (registroExistente) {
-        _docRegistroStatus = registroExistente.status || null;
-        _docCnpjSalvo = registroExistente.dados_formulario?.cnpj || '';
-        aplicarDadosNoFormulario(registroExistente.dados_formulario);
-        if (registroExistente.case_number) {
+    // Retomada: documento já gerado (?doc=<id>) ou rascunhos existentes
+    const existentes = await carregarDocumentosExistentes(params.get('doc'));
+    const retomados = [];
+    Object.keys(existentes).forEach(slug => {
+        const registro = existentes[slug];
+        const est = estadoDoc(slug);
+        est.registroStatus = registro.status || null;
+        est.cnpjSalvo = registro.dados_formulario?.cnpj || '';
+        aplicarDadosNoFormulario(slug, registro.dados_formulario);
+        if (registro.case_number && !_docContexto.interacao) {
             _docContexto.interacao = {
-                Id: registroExistente.case_id_salesforce,
-                CaseNumber: registroExistente.case_number
+                Id: registro.case_id_salesforce,
+                CaseNumber: registro.case_number
             };
         }
+        retomados.push({ slug, registro });
+    });
+
+    if (retomados.length) {
         const aviso = document.getElementById('documento-aviso');
         if (aviso) {
+            const quando = r => r.registro.status === 'enviado'
+                ? `já <b>enviado</b> em ${formatarDataHora(r.registro.data_envio)}`
+                : `<b>gerado</b> em ${formatarDataHora(r.registro.created_at)}`;
             aviso.className = 'documento-aviso';
-            aviso.innerHTML = registroExistente.status === 'enviado'
-                ? 'Documento já <b>enviado</b> em ' + formatarDataHora(registroExistente.data_envio) + '. Revise os dados e use "Gerar e prosseguir" para reenviar.'
-                : 'Retomando documento <b>gerado</b> em ' + formatarDataHora(registroExistente.created_at) + '. Os dados preenchidos foram recuperados.';
+            aviso.innerHTML = retomados.length > 1
+                ? 'Documentos recuperados com os dados já preenchidos:<ul>' +
+                  retomados.map(r => `<li>${escHTML(TERMOS_URC[r.slug].titulo)} — ${quando(r)}</li>`).join('') +
+                  '</ul>'
+                : (retomados[0].registro.status === 'enviado'
+                    ? `Documento ${quando(retomados[0])}. Revise os dados e use "Gerar e prosseguir" para reenviar.`
+                    : `Retomando documento ${quando(retomados[0])}. Os dados preenchidos foram recuperados.`);
             aviso.style.display = 'block';
         }
     }
@@ -1114,14 +1498,17 @@ async function inicializarPaginaDocumento() {
         const contato = escolherContatoFoco(contatosFoco, parceiro.id_salesforce);
         if (contato) {
             _docContexto.foco = contato;
-            // Preenche campos que dependem do FOCO (e-mail, Account ID) se ainda vazios
-            const emailInput = document.querySelector('#documento-form input[name="email"]');
-            if (emailInput && !emailInput.value && contato.Email) {
-                emailInput.value = contato.Email;
+            // Preenche campos que dependem do FOCO (e-mail, Account ID) se ainda
+            // estiverem vazios — em TODAS as abas, não só na primeira
+            if (contato.Email) {
+                document.querySelectorAll('#documento-forms input[name="email"]').forEach(inp => {
+                    if (!inp.value || inp.value === '—') inp.value = contato.Email;
+                });
             }
-            const accountInput = document.querySelector('#documento-form input[name="account_id"]');
-            if (accountInput && (accountInput.value === '—' || !accountInput.value) && contato.AccountId) {
-                accountInput.value = contato.AccountId;
+            if (contato.AccountId) {
+                document.querySelectorAll('#documento-forms input[name="account_id"]').forEach(inp => {
+                    if (!inp.value || inp.value === '—') inp.value = contato.AccountId;
+                });
             }
         }
         // O CNPJ é dado do FOCO: prevalece sobre o valor salvo no documento
@@ -1137,8 +1524,8 @@ async function inicializarPaginaDocumento() {
             );
             if (interacao?.CaseNumber) {
                 _docContexto.interacao = interacao;
-                const interacaoInput = document.querySelector('#documento-form input[name="interacao"]');
-                if (interacaoInput) interacaoInput.value = interacao.CaseNumber;
+                document.querySelectorAll('#documento-forms input[name="interacao"]')
+                    .forEach(inp => { inp.value = interacao.CaseNumber; });
             }
         }
         if (typeof cacheNavSet === 'function' && (contatosFoco.length || _docContexto.interacao)) {
@@ -1148,31 +1535,54 @@ async function inicializarPaginaDocumento() {
                 contatos: contatosFoco
             });
         }
-        atualizarPreviewDocumento();
+        _docTipos.forEach(slug => atualizarPreviewDocumento(slug));
     } catch (e) {
         // FOCO indisponível: segue com "—" e o CNPJ volta a ser editável
         console.warn('FOCO indisponível para o documento:', e?.message || e);
         aplicarCnpjDoFoco([]);
     }
 
+    marcarAbasPendentes();
+
     // Botões: "Gerar e prosseguir" → etapa de envio (Tela 4 da POC)
-    document.getElementById('btn-gerar-documento').onclick = mostrarTelaEnvio;
+    document.getElementById('btn-gerar-documento').onclick = gerarTodosEProsseguir;
     document.getElementById('btn-envio-cancelar').onclick = voltarParaDetalhe;
-    document.getElementById('btn-envio-confirmar').onclick = confirmarEnvioDocumento;
+    document.getElementById('btn-envio-confirmar').onclick = confirmarEnvioEmLote;
     document.getElementById('btn-salvar-contato').onclick = salvarContatoDoFormulario;
 }
 
-function renderFormularioDocumento(termo) {
-    const container = document.getElementById('documento-form-container');
-    container.innerHTML = '<div class="doc-form-grid">' +
-        termo.campos.map(c => renderCampoDocumento(c, _docContexto)).join('') +
-        '</div>';
+/**
+ * Cria o formulário e a pré-visualização de um termo (um par por documento
+ * selecionado). Chamada UMA vez por slug: trocar de aba não re-renderiza nada,
+ * senão os listeners seriam reanexados e o preenchimento se perderia.
+ */
+function renderFormularioDocumento(slug) {
+    const termo = TERMOS_URC[slug];
+    if (!termo) return;
 
-    // Preview reativo ("change" cobre a lista de CNPJs do FOCO)
-    const form = document.getElementById('documento-form');
-    form.addEventListener('input', atualizarPreviewDocumento);
-    form.addEventListener('change', atualizarPreviewDocumento);
-    atualizarPreviewDocumento();
+    document.getElementById('documento-forms').insertAdjacentHTML('beforeend',
+        `<form class="doc-form" data-tipo="${slug}" onsubmit="return false;" hidden>` +
+        '<div class="doc-form-grid">' +
+        termo.campos.map(c => renderCampoDocumento(c, _docContexto)).join('') +
+        '</div></form>');
+
+    document.getElementById('documento-previews').insertAdjacentHTML('beforeend',
+        `<div class="doc-preview" data-tipo="${slug}" hidden></div>`);
+
+    // Preview reativo ("change" cobre a lista de CNPJs do FOCO e os checkboxes).
+    // Arrow function obrigatória: a referência nua receberia o Event como slug.
+    const form = formDoDocumento(slug);
+    const aoEditar = (ev) => {
+        const nome = ev?.target?.name;
+        if (nome && CAMPOS_CLIENTE.includes(nome)) espelharCampoCliente(nome, ev.target.value, slug);
+        estadoDoc(slug).tocado = true;
+        atualizarPreviewDocumento(slug);
+        marcarAbasPendentes();
+    };
+    form.addEventListener('input', aoEditar);
+    form.addEventListener('change', aoEditar);
+
+    atualizarPreviewDocumento(slug);
 }
 
 document.addEventListener('DOMContentLoaded', inicializarPaginaDocumento);

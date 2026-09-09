@@ -146,13 +146,15 @@ function montarLinhasDocumentos(parceiros) {
         const temRegistroLGPD = docs.some(d => d.tipo_documento === 'termo-lgpd');
         let linhasDoParceiro = 0;
 
-        // Termo LGPD: só quando existe de fato (registro ou histórico do fluxo antigo)
-        if (temRegistroLGPD || temHistoricoLGPD(p)) {
+        // Termo LGPD sem registro em `documentos`: resta o histórico das flags
+        // de `parceiros` (fluxo antigo). Com registro, ele é a fonte — traz o
+        // PDF, o status e a integração no FOCO, que as flags não têm.
+        if (!temRegistroLGPD && temHistoricoLGPD(p)) {
             linhas.push(linhaLGPDDoParceiro(p));
             linhasDoParceiro++;
         }
 
-        docs.filter(d => d.tipo_documento !== 'termo-lgpd')
+        docs.slice()
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
             .forEach(d => { linhas.push({ parceiro: p, doc: d }); linhasDoParceiro++; });
 
@@ -501,6 +503,45 @@ function filtrarParceiros() {
     aplicarFiltrosParceiros();
     paginaParceiros = 1;
     renderizarTabelaParceiros();
+    atualizarBotaoLimparFiltros();
+}
+
+/**
+ * Limpa os três filtros da lista e volta a mostrar todos os documentos.
+ */
+function limparFiltrosParceiros() {
+    ['filtro-pesquisa', 'filtro-status', 'filtro-tipo'].forEach(id => {
+        const campo = document.getElementById(id);
+        if (campo) campo.value = '';
+    });
+    filtrarParceiros();
+    document.getElementById('filtro-pesquisa')?.focus();
+}
+
+/** Algum filtro preenchido? */
+function temFiltroAtivo() {
+    return ['filtro-pesquisa', 'filtro-status', 'filtro-tipo']
+        .some(id => (document.getElementById(id)?.value || '').trim() !== '');
+}
+
+/** O botão "Limpar" só fica disponível quando há filtro para limpar */
+function atualizarBotaoLimparFiltros() {
+    const btn = document.getElementById('btn-limpar-filtros');
+    if (btn) btn.disabled = !temFiltroAtivo();
+}
+
+/**
+ * Acompanha os campos de filtro para o botão "Limpar" refletir o estado da
+ * tela mesmo antes de o consultor clicar em "Filtrar".
+ */
+function ligarBotaoLimparFiltros() {
+    ['filtro-pesquisa', 'filtro-status', 'filtro-tipo'].forEach(id => {
+        const campo = document.getElementById(id);
+        if (!campo) return;
+        campo.addEventListener('input', atualizarBotaoLimparFiltros);
+        campo.addEventListener('change', atualizarBotaoLimparFiltros);
+    });
+    atualizarBotaoLimparFiltros();
 }
 
 /**
@@ -637,6 +678,9 @@ async function registrarEnvioLGPDNoParceiro(parceiro) {
  * Carrega os dados do parceiro na página de detalhe
  */
 async function carregarDetalhe() {
+    // Estado inicial da barra de seleção de termos (0 selecionados, botão travado)
+    atualizarBarraSelecao();
+
     // Tenta pegar o ID de várias formas (compatibilidade com diferentes servidores)
     let id = new URLSearchParams(window.location.search).get('id');
     
@@ -921,11 +965,87 @@ function pintarCNPJFoco(elementoId, contatos, parceiro) {
 }
 
 /**
- * Navega para a página do documento/termo selecionado na grade.
+ * Navega para a página de documentos com um ou vários termos selecionados.
+ */
+function abrirDocumentos(tipos) {
+    if (!parceiroAtual?.id || !tipos.length) return;
+    window.location.href = `documento?id=${encodeURIComponent(parceiroAtual.id)}`
+        + `&tipos=${encodeURIComponent(tipos.join(','))}`;
+}
+
+/**
+ * Navega para a página do documento de um único termo.
+ * Mantida para os links diretos (ex.: retomada pelo Acompanhamento).
  */
 function abrirDocumento(tipo) {
-    if (!parceiroAtual?.id) return;
-    window.location.href = `documento?id=${encodeURIComponent(parceiroAtual.id)}&tipo=${encodeURIComponent(tipo)}`;
+    abrirDocumentos([tipo]);
+}
+
+// ===== Seleção múltipla de termos (Tela 2 - detalhe) =====
+
+// Slugs na ordem em que o consultor marcou (não na ordem da grade)
+let _docsSelecionados = [];
+
+/**
+ * Marca/desmarca um card da grade de termos.
+ * Cards com o mesmo data-tipo são o MESMO termo (a grade repete o
+ * "Parcelamento de Débitos do MEI"): acendem juntos e o slug entra uma vez só.
+ */
+function alternarSelecaoDocumento(card) {
+    const tipo = card.dataset.tipo;
+    if (!tipo) return;
+
+    const i = _docsSelecionados.indexOf(tipo);
+    const marcado = i === -1;
+    if (marcado) _docsSelecionados.push(tipo);
+    else _docsSelecionados.splice(i, 1);
+
+    document.querySelectorAll(`#documentos-grid .doc-card[data-tipo="${tipo}"]`)
+        .forEach(c => c.classList.toggle('doc-card-sel', marcado));
+
+    atualizarBarraSelecao();
+}
+
+/** Marca ou limpa todos os termos da grade */
+function selecionarTodosDocumentos(marcar) {
+    _docsSelecionados = [];
+    document.querySelectorAll('#documentos-grid .doc-card').forEach(card => {
+        card.classList.toggle('doc-card-sel', marcar);
+        const tipo = card.dataset.tipo;
+        if (marcar && tipo && !_docsSelecionados.includes(tipo)) _docsSelecionados.push(tipo);
+    });
+    atualizarBarraSelecao();
+}
+
+/** Atualiza contagem, chips e o botão "Prosseguir" da barra de seleção */
+function atualizarBarraSelecao() {
+    const total = _docsSelecionados.length;
+
+    const contador = document.getElementById('sel-count');
+    if (contador) contador.textContent = total;
+
+    const chips = document.getElementById('sel-chips');
+    if (chips) {
+        chips.innerHTML = _docsSelecionados.map(tipo => {
+            const card = document.querySelector(`#documentos-grid .doc-card[data-tipo="${tipo}"]`);
+            const nome = card?.dataset.nome || tipo;
+            return `<span class="doc-chip">${nome}</span>`;
+        }).join('');
+    }
+
+    const btn = document.getElementById('btn-prosseguir-documentos');
+    if (btn) {
+        btn.disabled = total === 0;
+        btn.innerHTML = total > 1
+            ? `Prosseguir com ${total} documentos <i class="fas fa-arrow-right"></i>`
+            : 'Prosseguir para edição <i class="fas fa-arrow-right"></i>';
+    }
+}
+
+/** Abre a página de documentos com os termos marcados */
+function prosseguirComDocumentos() {
+    if (!_docsSelecionados.length) return;
+    abrirDocumentos(_docsSelecionados);
 }
 
 // ===== Funções do Modal de Edição =====
@@ -1759,6 +1879,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             try {
                 // Página de lista: carregar parceiros do banco
                 if (document.getElementById('tbody-parceiros')) {
+                    ligarBotaoLimparFiltros();
                     await carregarParceiros();
                     // Aceite/recusa chega pelo WhatsApp: atualiza a tela sozinha
                     await ligarAtualizacaoAoVivo('lista-clientes', recarregarListaAoVivo);

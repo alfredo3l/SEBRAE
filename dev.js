@@ -10,7 +10,7 @@ const fs      = require('fs');
 const path    = require('path');
 const { spawn } = require('child_process');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const SEBRAE_API_BASE    = process.env.SEBRAE_API_BASE    || 'https://hlg-gateway.sebrae.com.br/foco-stg';
 const SEBRAE_CLIENT_ID   = process.env.SEBRAE_CLIENT_ID;

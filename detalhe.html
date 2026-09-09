@@ -119,57 +119,79 @@
             </div>
         </div>
 
-        <!-- Card - Seleção de termo/declaração -->
+        <!-- Card - Seleção de termos/declarações (um ou vários) -->
         <div class="info-card">
             <div class="info-card-header">
                 <i class="fas fa-file-signature"></i>
-                Selecione o termo/declaração a ser gerado
+                Selecione um ou mais termos/declarações
             </div>
             <div class="info-card-body">
-                <p class="documentos-sub">Não é obrigatório enviar todos — apenas o necessário para este atendimento.</p>
+                <p class="documentos-sub">Marque os documentos necessários para este atendimento — é possível selecionar vários de uma vez.</p>
+                <div class="doc-sel-acoes">
+                    <button type="button" class="btn-acompanhamento" onclick="selecionarTodosDocumentos(true)">
+                        <i class="fas fa-check-double"></i> Selecionar todos
+                    </button>
+                    <button type="button" class="btn-acompanhamento" onclick="selecionarTodosDocumentos(false)">
+                        <i class="fas fa-eraser"></i> Limpar
+                    </button>
+                </div>
                 <div class="documentos-grid" id="documentos-grid">
-                    <div class="doc-card" onclick="abrirDocumento('termo-lgpd')">
-                        <span class="doc-card-ic doc-card-lock"><i class="fas fa-lock"></i></span>
-                        <h4>Termo LGPD</h4>
-                        <p>Preenchimento 100% automático (FOCO). Sem edição.</p>
-                    </div>
-                    <div class="doc-card" onclick="abrirDocumento('parcelamento-mei')">
+                    <div class="doc-card" data-tipo="termo-lgpd" data-nome="Termo LGPD" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
-                        <h4>Parcelamento de Débitos do MEI — Termo de Ciência e Responsabilidade</h4>
+                        <h4>Termo LGPD</h4>
+                        <p>Preenchimento automático (FOCO). Telefone e e-mail editáveis.</p>
+                    </div>
+                    <div class="doc-card" data-tipo="parcelamento-mei" data-nome="Parcelamento MEI — RFB" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
+                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
+                        <h4>Parcelamento de Débitos do MEI — RFB</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('reenquadramento-mei')">
+                    <div class="doc-card" data-tipo="reenquadramento-mei" data-nome="Reenquadramento do MEI" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
                         <h4>Solicitação de Reenquadramento do MEI</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('formalizacao')">
+                    <div class="doc-card" data-tipo="formalizacao" data-nome="Responsabilidade — Formalização" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
                         <h4>Termo de Responsabilidade — Formalização</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('declaracao-responsabilidade')">
+                    <div class="doc-card" data-tipo="declaracao-responsabilidade" data-nome="Declaração de Responsabilidade" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
                         <h4>Declaração de Responsabilidade</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('alteracao')">
+                    <div class="doc-card" data-tipo="alteracao" data-nome="Responsabilidade — Alteração" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
                         <h4>Termo de Responsabilidade — Alteração</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('parcelamento-pgfn')">
+                    <div class="doc-card" data-tipo="parcelamento-pgfn" data-nome="Parcelamento MEI — PGFN" onclick="alternarSelecaoDocumento(this)">
+                        <span class="doc-card-chk"></span>
                         <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
                         <h4>Parcelamento de Débitos do MEI — PGFN</h4>
                         <p>Requer preenchimento do consultor.</p>
                     </div>
-                    <div class="doc-card" onclick="abrirDocumento('parcelamento-mei')">
-                        <span class="doc-card-ic doc-card-edit"><i class="fas fa-pen"></i></span>
-                        <h4>Parcelamento de Débitos do MEI</h4>
-                        <p>Requer preenchimento do consultor.</p>
-                    </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Barra de seleção: fora do .info-card (que tem overflow:hidden e
+             impediria o position:sticky) -->
+        <div class="selbar" id="selbar-documentos">
+            <div class="selbar-info">
+                <b><span class="count-pill" id="sel-count">0</span> documento(s) selecionado(s)</b>
+                <div class="selbar-chips" id="sel-chips"></div>
+            </div>
+            <button type="button" class="btn-salvar" id="btn-prosseguir-documentos" disabled onclick="prosseguirComDocumentos()">
+                Prosseguir para edição <i class="fas fa-arrow-right"></i>
+            </button>
         </div>
 
     </div>

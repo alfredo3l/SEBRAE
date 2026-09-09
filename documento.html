@@ -70,6 +70,16 @@
             </div>
         </div>
 
+        <!-- Abas dos documentos selecionados (só aparece com 2 ou mais) -->
+        <div class="info-card" id="documento-abas-card" style="display:none;">
+            <div class="info-card-body">
+                <p class="documentos-sub">Documentos selecionados — preencha um por vez pelas abas abaixo:</p>
+                <div class="doctabs" id="documento-abas">
+                    <!-- Abas geradas por js/documentos.js -->
+                </div>
+            </div>
+        </div>
+
         <!-- Grid: formulário + pré-visualização -->
         <div class="documento-grid" id="documento-edicao">
 
@@ -81,11 +91,10 @@
                 </div>
                 <div class="info-card-body">
                     <p class="documentos-sub">Dados recuperados automaticamente do cadastro / FOCO. Campos <b>AUTO</b> não são editáveis — o CNPJ vem do cadastro do cliente no FOCO. Campos com ✏️ são complementados pelo consultor.</p>
-                    <form id="documento-form" onsubmit="return false;">
-                        <div id="documento-form-container">
-                            <!-- Campos gerados por js/documentos.js -->
-                        </div>
-                    </form>
+                    <div id="documento-forms">
+                        <!-- Um <form class="doc-form" data-tipo="<slug>"> por termo,
+                             gerado por js/documentos.js. Só o da aba ativa fica visível. -->
+                    </div>
                     <div class="doc-form-rodape">
                         <button class="btn-salvar-contato" id="btn-salvar-contato" type="button" title="Salvar telefone e e-mail no cadastro do cliente (e no FOCO)">
                             <span class="btn-text"><i class="fas fa-address-card"></i> Salvar contato do cliente</span>
@@ -103,8 +112,9 @@
                     Pré-visualização do documento
                 </div>
                 <div class="info-card-body">
-                    <div class="doc-preview" id="documento-preview">
-                        <!-- Gerado por js/documentos.js -->
+                    <div id="documento-previews">
+                        <!-- Uma <div class="doc-preview" data-tipo="<slug>"> por termo,
+                             gerada por js/documentos.js. Só a da aba ativa fica visível. -->
                     </div>
                     <div class="documento-acoes">
                         <button class="btn-cancelar" id="btn-cancelar-documento" type="button">Cancelar</button>
@@ -136,16 +146,17 @@
             <div class="envio-card">
                 <div class="envio-card-header">
                     <i class="fab fa-whatsapp"></i>
-                    Enviar Documento via WhatsApp
+                    <span id="envio-card-titulo">Enviar Documento via WhatsApp</span>
                 </div>
                 <div class="envio-card-body">
-                    <p class="envio-pergunta"><i class="fas fa-info-circle"></i> Deseja enviar o documento <b id="envio-doc-nome">—</b> via WhatsApp para:</p>
+                    <p class="envio-pergunta"><i class="fas fa-info-circle"></i> Deseja enviar <b id="envio-doc-nome">—</b> via WhatsApp para:</p>
                     <div class="envio-dados">
                         <div class="envio-dados-k">Nome/Razão Social:</div><div id="envio-dado-nome">—</div>
                         <div class="envio-dados-k">CPF:</div><div id="envio-dado-cpf">—</div>
                         <div class="envio-dados-k">Telefone:</div><div id="envio-dado-telefone">—</div>
                         <div class="envio-dados-k">E-mail:</div><div id="envio-dado-email">—</div>
                     </div>
+                    <div class="envio-chips" id="envio-chips"></div>
                     <div class="envio-acoes">
                         <button class="btn-cancelar" id="btn-envio-cancelar" type="button">
                             <i class="fas fa-times"></i> Cancelar

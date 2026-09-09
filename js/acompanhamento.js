@@ -21,28 +21,15 @@ function escAcomp(v) {
  * de documentos com tipo != termo-lgpd, mais recentes primeiro.
  */
 function montarDocsAcompanhamento(p) {
-    const docs = [];
-    (p.documentos || [])
-        .filter(d => d.tipo_documento !== 'termo-lgpd')
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .forEach(d => docs.push(d));
+    const docs = (p.documentos || []).slice()
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    // Linha do LGPD: status vem das flags de parceiros (fonte viva), mas
-    // herda id/consultor/arquivo do registro em documentos, quando existir.
-    // Só entra se o termo existe de fato — cliente novo não tem termo algum.
-    const registroLGPD = (p.documentos || [])
-        .filter(d => d.tipo_documento === 'termo-lgpd')
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-
-    if (registroLGPD || temHistoricoLGPD(p)) {
-        const lgpd = linhaLGPDDoParceiro(p).doc;
-        if (registroLGPD) {
-            lgpd.id = registroLGPD.id;
-            lgpd.consultor = registroLGPD.consultor;
-            lgpd.created_at = registroLGPD.created_at;
-            lgpd.arquivo_path = lgpd.arquivo_path || registroLGPD.arquivo_path;
-        }
-        docs.push(lgpd);
+    // O registro em `documentos` é a fonte de cada termo, LGPD incluído: dele
+    // vêm o status, o PDF e a integração no FOCO. A linha derivada das flags
+    // de `parceiros` só atende quem ficou apenas com o histórico do fluxo
+    // antigo — cliente novo não tem termo algum.
+    if (!docs.some(d => d.tipo_documento === 'termo-lgpd') && temHistoricoLGPD(p)) {
+        docs.push(linhaLGPDDoParceiro(p).doc);
     }
     return docs;
 }
