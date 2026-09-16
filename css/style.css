@@ -2723,7 +2723,7 @@ body {
     color: #fff;
 }
 
-/* Ponto âmbar: ainda há campo editável em branco nesta aba (só sinaliza) */
+/* Ponto âmbar: ainda há pendência de preenchimento nesta aba (só sinaliza) */
 .doctab-pendente::after {
     content: " •";
     color: #f5a623;
@@ -2757,6 +2757,32 @@ body {
 
 .documento-aviso li {
     margin-bottom: 4px;
+}
+
+/* Modal de pendências (antes de gerar): texto de abertura e lista por documento */
+.pendencias-intro {
+    font-size: 0.9rem;
+    color: #333;
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.pendencias-lista {
+    margin-top: 0;
+    max-height: 45vh;
+    overflow-y: auto;
+}
+
+.pendencias-lista > ul {
+    margin-top: 0;
+}
+
+.pendencias-lista ul ul {
+    margin-top: 4px;
+}
+
+.pendencias-lista b {
+    color: #5a4300;
 }
 
 /* ============================================

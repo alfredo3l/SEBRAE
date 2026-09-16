@@ -235,6 +235,34 @@
         </div>
     </div>
 
+    <!-- ========== MODAL PENDÊNCIAS (confirmação antes de gerar) ========== -->
+    <div class="modal-overlay" id="modal-pendencias" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-pendencias-titulo">
+        <div class="modal-cadastro-card" style="max-width: 540px;">
+            <div class="modal-cadastro-header">
+                <h3 id="modal-pendencias-titulo"><i class="fas fa-triangle-exclamation"></i> Há informações pendentes</h3>
+                <button class="modal-close-btn" type="button" onclick="fecharModalPendencias()" title="Fechar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <p class="pendencias-intro">
+                    Confira antes de gerar: os itens abaixo ainda não foram preenchidos ou revisados.
+                    Você pode voltar ao formulário para completar, ou gerar mesmo assim — nesse caso
+                    o documento seguirá para o cliente com as lacunas em branco.
+                </p>
+                <div class="documento-aviso documento-aviso-alerta pendencias-lista" id="modal-pendencias-lista"></div>
+                <div class="modal-form-actions">
+                    <button type="button" class="btn-cancelar" id="btn-pendencias-gerar" onclick="gerarMesmoAssim()">
+                        <i class="fas fa-file-pdf"></i> Gerar mesmo assim
+                    </button>
+                    <button type="button" class="btn-salvar" id="btn-pendencias-revisar" onclick="revisarPendencias()">
+                        <i class="fas fa-pen-to-square"></i> Revisar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Supabase JS (CDN) -->

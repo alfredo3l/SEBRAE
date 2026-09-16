@@ -430,18 +430,22 @@ let _docContexto = null;   // { parceiro, foco, interacao }
 // A página trata de UM cliente e de N termos (um por aba)
 let _docTipos = [];        // slugs selecionados, deduplicados, na ordem escolhida
 let _docTipoAtivo = null;  // slug da aba visível
-const _docEstado = {};     // slug -> { registroId, registroStatus, cnpjSalvo, enviado, codigo, tocado }
+const _docEstado = {};     // slug -> { registroId, registroStatus, cnpjSalvo, enviado, codigo, tocado, restaurado }
 
 // Telefone, e-mail e CNPJ são dados do CLIENTE: o que for digitado numa aba
 // vale para todas (e para todos os payloads do lote).
 const CAMPOS_CLIENTE = ['telefone', 'email', 'cnpj'];
 
-/** Estado de um documento do lote, criado sob demanda */
+/**
+ * Estado de um documento do lote, criado sob demanda.
+ *   tocado     → o consultor interagiu com o formulário nesta sessão
+ *   restaurado → os campos vieram de um registro já salvo (retomada)
+ */
 function estadoDoc(slug) {
     if (!_docEstado[slug]) {
         _docEstado[slug] = {
             registroId: null, registroStatus: null, cnpjSalvo: null,
-            enviado: false, codigo: null, tocado: false
+            enviado: false, codigo: null, tocado: false, restaurado: false
         };
     }
     return _docEstado[slug];
@@ -1040,11 +1044,24 @@ async function prepararEnvioDocumento(slug) {
 }
 
 /**
+ * Clique em "Gerar (todos) e prosseguir": com alguma pendência de
+ * preenchimento/revisão abre o modal de confirmação; sem pendência, gera direto.
+ */
+async function gerarTodosEProsseguir() {
+    const grupos = pendenciasDoLote();
+    if (grupos.length) {
+        abrirModalPendencias(grupos);
+        return;
+    }
+    await executarGeracao();
+}
+
+/**
  * Gera todos os documentos selecionados e avança para a etapa de envio.
  * Diferente do fluxo antigo, os registros são gravados COM await: cada id
  * alimenta a RPC que reserva a letra de resposta no envio.
  */
-async function gerarTodosEProsseguir() {
+async function executarGeracao() {
     const btn = document.getElementById('btn-gerar-documento');
     btn.disabled = true;
     btn.querySelector('.btn-text').style.display = 'none';
@@ -1344,13 +1361,175 @@ function ativarAbaDocumento(slug) {
     }
 }
 
-/** Há campo editável de texto ainda em branco nesta aba? (só sinaliza) */
-function abaPendente(slug) {
+// ===== Pendências antes de gerar =====
+
+/**
+ * Lista o que ainda falta num termo. Cada item: { campo, rotulo, motivo }
+ *   campo → name do primeiro input a focar (null no item "não revisado").
+ * Percorre TERMOS_URC[slug].campos — rótulo e tipo vêm do catálogo, só o
+ * valor é lido do DOM — para o critério não depender do HTML gerado.
+ * Regras: campo AUTO/AUTO•FOCO nunca conta (CNPJ ausente no FOCO é cliente
+ * PF, e os templates já omitem o trecho); campos opcionais também não;
+ * nas tabelas Débitos/DASN só conta linha iniciada e não concluída, ou a
+ * tabela inteira vazia — célula vazia isolada não é pendência.
+ * opcoes.incluirRevisao (padrão true): inclui "formulário não revisado"
+ * (nenhuma interação do consultor e sem dados restaurados de registro salvo).
+ */
+function pendenciasDoDocumento(slug, { incluirRevisao = true } = {}) {
+    const termo = TERMOS_URC[slug];
     const form = formDoDocumento(slug);
-    if (!form) return false;
-    return [...form.querySelectorAll('input[type="text"]:not([readonly]), textarea')]
-        .some(campo => !CAMPOS_OPCIONAIS_DOC.includes(campo.name) && !campo.value.trim());
+    if (!termo || !form) return [];
+
+    const el = nome => form.querySelector(`[name="${nome}"]`);
+    const valor = nome => el(nome)?.value ?? '';
+    const marcado = nome => !!el(nome)?.checked;
+    const itens = [];
+
+    if (incluirRevisao) {
+        const est = estadoDoc(slug);
+        if (!est.tocado && !est.restaurado) {
+            itens.push({ campo: null, rotulo: 'Formulário', motivo: 'não revisado — nenhum campo foi conferido' });
+        }
+    }
+
+    termo.campos.forEach(campo => {
+        switch (campo.tipo) {
+            case 'check':
+            case 'checklist':
+                // não marcar é resposta válida
+                break;
+
+            case 'radio':
+                if (!form.querySelector(`input[name="${campo.id}"]:checked`)) {
+                    itens.push({ campo: campo.id, rotulo: campo.label, motivo: 'nenhuma opção selecionada' });
+                }
+                break;
+
+            case 'debitos': {
+                let algum = false;
+                campo.opcoes.forEach((op, i) => {
+                    if (!marcado(`${campo.id}_${i}_check`)) return;
+                    algum = true;
+                    if (!temValor(valor(`${campo.id}_${i}_data`))) {
+                        itens.push({ campo: `${campo.id}_${i}_data`, rotulo: campo.label, motivo: `"${op}" marcado sem a data` });
+                    }
+                });
+                if (!algum) {
+                    itens.push({ campo: `${campo.id}_0_check`, rotulo: campo.label, motivo: 'nenhum débito informado' });
+                }
+                break;
+            }
+
+            case 'dasn': {
+                let algum = false;
+                for (let i = 0; i < 5; i++) {
+                    const ano = valor(`${campo.id}_${i}_ano`), val = valor(`${campo.id}_${i}_valor`),
+                          hora = valor(`${campo.id}_${i}_hora`), ret = marcado(`${campo.id}_${i}_ret`);
+                    if (!(temValor(ano) || temValor(val) || temValor(hora) || ret)) continue; // linha vazia
+                    algum = true;
+                    if (!temValor(ano)) {
+                        itens.push({ campo: `${campo.id}_${i}_ano`, rotulo: campo.label, motivo: `linha ${i + 1}: ano não informado` });
+                    } else if (!temValor(val)) {
+                        itens.push({ campo: `${campo.id}_${i}_valor`, rotulo: campo.label, motivo: `linha ${i + 1}: valor não informado` });
+                    }
+                }
+                if (!algum) {
+                    itens.push({ campo: `${campo.id}_0_ano`, rotulo: campo.label, motivo: 'nenhuma declaração informada' });
+                }
+                break;
+            }
+
+            default: { // text | textarea
+                if (campo.auto || campo.autoFoco || CAMPOS_OPCIONAIS_DOC.includes(campo.id)) break;
+                const input = el(campo.id);
+                if (!input || input.readOnly || input.tagName === 'SELECT') break;
+                if (!temValor(input.value)) {
+                    itens.push({ campo: campo.id, rotulo: campo.label, motivo: 'em branco' });
+                }
+            }
+        }
+    });
+
+    return itens;
 }
+
+/** Pendências de todos os termos do lote: [{ slug, itens }], só quem tem itens */
+function pendenciasDoLote() {
+    return _docTipos
+        .map(slug => ({ slug, itens: pendenciasDoDocumento(slug) }))
+        .filter(g => g.itens.length);
+}
+
+/** Há pendência de preenchimento nesta aba? (só sinaliza; "não revisado" não pinta ponto) */
+function abaPendente(slug) {
+    return pendenciasDoDocumento(slug, { incluirRevisao: false }).length > 0;
+}
+
+let _pendenciasLote = [];   // grupos exibidos no modal aberto (usados pelo "Revisar")
+
+/** HTML da lista do modal: plana com 1 documento, agrupada por título com 2+ */
+function montarListaPendencias(grupos) {
+    const linhas = itens => '<ul>' + itens.map(i =>
+        `<li>${escHTML(i.rotulo)}: ${escHTML(i.motivo)}</li>`).join('') + '</ul>';
+    if (grupos.length === 1 && _docTipos.length === 1) return linhas(grupos[0].itens);
+    return '<ul>' + grupos.map(g =>
+        `<li><b>${escHTML(TERMOS_URC[g.slug].titulo)}</b>${linhas(g.itens)}</li>`).join('') + '</ul>';
+}
+
+/** Abre o modal de confirmação com as pendências do lote */
+function abrirModalPendencias(grupos) {
+    _pendenciasLote = grupos;
+    const modal = document.getElementById('modal-pendencias');
+    const lista = document.getElementById('modal-pendencias-lista');
+    if (!modal || !lista) { // sem o modal na página, nunca travar o fluxo
+        executarGeracao();
+        return;
+    }
+    lista.innerHTML = montarListaPendencias(grupos);
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    // Foco no "Revisar": Enter jamais dispara a geração
+    document.getElementById('btn-pendencias-revisar')?.focus();
+}
+
+function fecharModalPendencias() {
+    const modal = document.getElementById('modal-pendencias');
+    if (!modal || modal.style.display === 'none') return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+/** "Revisar": fecha, ativa a aba do 1º documento pendente e foca o 1º campo pendente */
+function revisarPendencias() {
+    const grupo = _pendenciasLote[0];
+    fecharModalPendencias();
+    if (!grupo) return;
+    ativarAbaDocumento(grupo.slug);
+    focarCampoDocumento(grupo.slug, grupo.itens.find(i => i.campo)?.campo || null);
+}
+
+/** Rola até um campo do formulário e o foca; sem nome, o primeiro editável */
+function focarCampoDocumento(slug, nome) {
+    const form = formDoDocumento(slug);
+    if (!form) return;
+    const alvo = nome
+        ? form.querySelector(`[name="${nome}"]`)
+        : form.querySelector('input:not([readonly]):not([type="hidden"]), textarea, select');
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alvo.focus({ preventScroll: true });
+}
+
+/** "Gerar mesmo assim": segue o fluxo normal de geração */
+function gerarMesmoAssim() {
+    fecharModalPendencias();
+    executarGeracao();
+}
+
+// ESC fecha o modal de pendências (o listener de app.js só conhece os modais do cadastro)
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') fecharModalPendencias();
+});
 
 /** Marca com um ponto âmbar as abas que ainda têm campos em branco */
 function marcarAbasPendentes() {
@@ -1463,6 +1642,8 @@ async function inicializarPaginaDocumento() {
         const est = estadoDoc(slug);
         est.registroStatus = registro.status || null;
         est.cnpjSalvo = registro.dados_formulario?.cnpj || '';
+        // Dados vindos de um formulário já preenchido: não conta como "não revisado"
+        est.restaurado = !!registro.dados_formulario && Object.keys(registro.dados_formulario).length > 0;
         aplicarDadosNoFormulario(slug, registro.dados_formulario);
         if (registro.case_number && !_docContexto.interacao) {
             _docContexto.interacao = {
@@ -1581,6 +1762,9 @@ function renderFormularioDocumento(slug) {
     };
     form.addEventListener('input', aoEditar);
     form.addEventListener('change', aoEditar);
+    // Entrar num campo já conta como revisão — senão "Revisar" → conferir que
+    // está tudo certo → "Gerar" repetiria "não revisado" (foco não gera input).
+    form.addEventListener('focusin', () => { estadoDoc(slug).tocado = true; });
 
     atualizarPreviewDocumento(slug);
 }
