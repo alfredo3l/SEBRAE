@@ -12,7 +12,7 @@ Envia ao cliente, por WhatsApp, o documento gerado no sistema (ainda sem assinat
 Webhook (POST /webhook/TERMOS-URC)
   → instancia (Set: instancia = "SEBRAE")
   → seta_Dados (Set: Nome, CPF, Telefone, Email, TipoDocumento, NomeDocumento, DocumentoId, HtmlDocumento)
-  → Get a row (Supabase: parceiros por telefone)
+  → Get a row (Supabase: parceiros por id = cliente.id do payload)
   → If (telefone existe?)
        ├─ false → No Operation (encerra em silêncio)
        └─ true  → Monta_Mensagem (Code: monta o texto do WhatsApp e decide se ESTA execução o envia)
@@ -26,8 +26,8 @@ Webhook (POST /webhook/TERMOS-URC)
                   → Monta rodape PDF (Code: binário footer.html, "Página X de Y")
                   → HTTP Request (Gotenberg: HTML → PDF A4)
                   → Extract from File
-                  → Atualiza Banco de Dados (Supabase: documentos.status = enviado, data_envio)
                   → Wait 1s → Enviar documento (PDF)
+                  → Atualiza Banco de Dados (Supabase: documentos.status = enviado, data_envio)
 ```
 
 O `Enviar texto` roda **antes** da geração do PDF: assim a mensagem sai em ~1 s e os PDFs
@@ -43,7 +43,8 @@ em ~6 s, o que garante a ordem mesmo com as N execuções de um lote correndo em
 | `Monta_Mensagem` | Monta o texto do WhatsApp: consolidado quando o lote tem 2+ documentos, individual quando tem 1 — ver `Code/Monta_Mensagem/CHANGELOG.md` |
 | `Enviar texto` | `messageText` = `{{ $('Monta_Mensagem').first().json.mensagem_texto }}`; a mensagem cita o(s) documento(s) e seus códigos |
 | `Enviar documento` | Nome do PDF = nome do documento (`.pdf`) |
-| `Atualiza Banco de Dados` | Atualiza **`documentos`** (`status = enviado`, `data_envio`) filtrando por `documento.id`; `onError: continueRegularOutput` para nunca impedir o envio |
+| `Enviar texto` / `Enviar documento` | `remoteJid` = `cliente.whatsapp` do payload (JID devolvido pela verificação) ou, sem ele, `'55' + dígitos do telefone` |
+| `Atualiza Banco de Dados` | Atualiza **`documentos`** (`status = enviado`, `data_envio`) filtrando por `documento.id`, **depois** do `Enviar documento` (desde 16/09/2026); `onError: continueRegularOutput` |
 
 ## Contrato com o sistema
 
@@ -51,8 +52,11 @@ Payload completo documentado em [`fluxos/webhook-n8n.md`](../webhook-n8n.md). Re
 `nome_razao_social`, `cpf`, `telefone`, `email` na raiz (compatibilidade) + blocos
 `documento` (id, tipo, nome, html, campos), `cliente`, `interacao` e `consultor`.
 
-⚠️ O nó `Get a row` localiza o parceiro **pelo telefone**; o cliente precisa existir em `parceiros`
-com o mesmo número enviado.
+O nó `Get a row` localiza o parceiro pelo **`cliente.id`** (uuid) do payload. ⚠️ Até 16/09/2026 era
+por **igualdade exata de `telefone`**: qualquer diferença de máscara entre o formulário e o cadastro
+(`(67)992451961` × `(67)99245-1961`) devolvia vazio, o `If` caía no ramo vazio e **nada era enviado** —
+com a execução terminando em "success" e o front recebendo 200 (execução 42721). Ver também
+"Verificação do WhatsApp e ordem da gravação".
 
 ## Credenciais referenciadas
 
@@ -142,3 +146,24 @@ com 1 item** e que o `Enviar texto` aparece como não executado nas chamadas 2..
 Com **um único documento** — ou com um payload antigo, sem o bloco `lote` — a mensagem é
 byte a byte a mesma de antes (verificado com `assert.strictEqual` contra a renderização da
 expressão anterior).
+
+## Verificação do WhatsApp e ordem da gravação (16/09/2026)
+
+Um lote de 3 documentos para um cliente com telefone **fixo** (`6733895349`) mostrou dois
+pontos cegos: (1) o fluxo não sabia se o número tinha WhatsApp — a Evolution aceita a mensagem
+e devolve `status: PENDING` mesmo para número inexistente, e as 3 execuções terminaram com
+sucesso; (2) `Atualiza Banco de Dados` gravava `enviado` **antes** do `Enviar documento`.
+
+- A verificação ficou num fluxo próprio, **`[Termo URC - Verifica WhatsApp]`**
+  (`De7FxACcl71bzDom`, webhook `/webhook/TERMOS-URC-VERIFICA`), chamado pelo sistema **antes**
+  de reservar as letras — sem WhatsApp, nada é enviado nem gravado. Este fluxo não verifica
+  de novo (decisão de 16/09/2026: verificação só no front).
+- O `remoteJid` dos dois nós da Evolution passou a usar `body.cliente.whatsapp` (JID devolvido
+  pela verificação, que resolve celulares registrados sem o 9) com fallback no
+  `'55' + dígitos` de sempre.
+- Cadeia final reordenada: `Extract from File → Wait → Enviar documento → Atualiza Banco de Dados`.
+  Obs.: o sistema já marca `enviado` pela RPC `preparar_envio_documento` antes do POST, então o
+  efeito prático da reordenação é só o `data_envio` do fluxo refletir o envio real.
+- Publicado por `n8n_update_partial_workflow` (12 operações) — a ferramenta agora contorna o
+  problema do `settings` desta instância (deixa `timeSavedMode` de fora e avisa); conferido
+  `versionId == activeVersionId` (`84b6facd…`) no GET seguinte.

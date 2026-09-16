@@ -4,6 +4,7 @@
 |---|---|---|
 | **Envio** do documento (sistema → cliente) | `POST /webhook/TERMOS-URC` | `[Termo URC - Envio sem assinar]` (`Hqfoa19HyX4QFOqW`) |
 | **Resposta** do cliente (WhatsApp → sistema) | `POST /webhook/TERMOS-URC-ASSINADOS` | `[Termo URC - Assinado]` (`7ITLaIB5rSc7EoTd`) |
+| **Verificação** do WhatsApp (sistema → Evolution, antes do envio) | `POST /webhook/TERMOS-URC-VERIFICA` | `[Termo URC - Verifica WhatsApp]` (`De7FxACcl71bzDom`) |
 
 > Desde 23/08/2026 a Evolution API aponta para `/webhook/TERMOS-URC-ASSINADOS` e os dois
 > fluxos LGPD antigos estão desativados (os endereços antigos respondem 404).
@@ -22,8 +23,9 @@ POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC
 ## Payload enviado
 
 Formato híbrido: os campos da **raiz** mantêm compatibilidade com o fluxo atual
-(que lê `body.nome_razao_social`, `body.cpf`, `body.telefone` e busca o parceiro
-no Supabase pelo telefone); os blocos aninhados trazem o resto para o fluxo usar
+(que lê `body.nome_razao_social`, `body.cpf`, `body.telefone`; o parceiro é localizado
+no Supabase por `cliente.id` desde 16/09/2026 — antes era por telefone, e diferença de máscara
+matava o envio em silêncio); os blocos aninhados trazem o resto para o fluxo usar
 conforme for evoluindo.
 
 ```jsonc
@@ -48,6 +50,7 @@ conforme for evoluindo.
     "cpf": "...",
     "cnpj": "...",
     "telefone": "...",
+    "whatsapp": "556792451961",         // JID devolvido pela verificação (sem @s.whatsapp.net); null se não verificado
     "email": "...",
     "account_id": "001V2000014Ac3QIAS",   // Account no FOCO
     "contact_id": "003V200000y9CT5IAM"    // Contact no FOCO
@@ -101,6 +104,22 @@ Regras:
 - **Retrocompatível**: sem o bloco `lote`, ou com `total: 1`, o fluxo monta a mensagem
   individual de sempre.
 
+### Verificação do WhatsApp (16/09/2026)
+
+Antes de reservar as letras e disparar o envio, o sistema chama
+`POST /webhook/TERMOS-URC-VERIFICA` com `{ "telefone": "..." }` e recebe
+`{ ok, exists, jid, whatsapp, numero, motivo }` (detalhes em
+[`[Termo URC - Verifica WhatsApp]/README.md`](<[Termo URC - Verifica WhatsApp]/README.md>)).
+
+- `exists: false` → o botão Enviar fica **bloqueado** e nada é gravado (nem letra, nem status).
+- `exists: true` → `whatsapp` vai no payload do envio em `cliente.whatsapp`; o fluxo usa esse
+  valor como `remoteJid` (celular antigo registrado sem o 9 sai no formato certo).
+- `exists: null` (verificação indisponível) → envio liberado com aviso; `cliente.whatsapp`
+  vai `null` e o fluxo cai no `'55' + dígitos` de sempre.
+
+O fluxo de envio também passou a gravar `documentos.status = enviado` **depois** do
+`Enviar documento` (antes gravava antes do envio).
+
 ## Tipos de documento (`documento.tipo`)
 
 `termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`,
@@ -114,7 +133,7 @@ POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-ASSINADOS
 
 Recebe o **evento da Evolution API** (não é o sistema que chama). O fluxo:
 
-1. normaliza o telefone do `data.key.remoteJid` → formato `(DD)XXXXX-XXXX`;
+1. extrai do `data.key.remoteJid` a **chave** DDD + últimos 8 dígitos (`telefone_chave` da view — casa fixo, celular com 9 e celular registrado sem o 9; desde 16/09/2026);
 2. busca os documentos aguardando resposta na view **`vw_documentos_pendentes`**;
 3. interpreta a mensagem (`data.message.conversation`) no nó `Identifica Documento`.
 

@@ -13,6 +13,7 @@ Espelho local e controle de desenvolvimento dos fluxos n8n do projeto SEBRAE. Co
 |---|---|---|---|
 | **`[Termo URC - Envio sem assinar]`** | `Hqfoa19HyX4QFOqW` | ativo | **Fluxo atual de envio** (webhook `/webhook/TERMOS-URC`): recebe qualquer termo do sistema com o HTML já montado, gera o PDF (Gotenberg), grava `documentos.status = enviado` e envia texto + PDF via WhatsApp |
 | **`[Termo URC - Assinado]`** | `7ITLaIB5rSc7EoTd` | ativo | **Fluxo atual de aceite** (webhook `/webhook/TERMOS-URC-ASSINADOS`): identifica o documento pela letra (`1A`/`2A`), gera o PDF assinado com evidências, grava `documentos` e, se for LGPD, `parceiros` + FOCO. ⚠️ Evolution ainda não aponta para ele |
+| **`[Termo URC - Verifica WhatsApp]`** | `De7FxACcl71bzDom` | ativo | **Verificação do número** (webhook `/webhook/TERMOS-URC-VERIFICA`): o sistema pergunta antes do envio se o telefone tem WhatsApp e qual é o JID real (`POST /chat/whatsappNumbers` da Evolution). Não envia nada ao cliente |
 | `[Termo LGPD - Envio sem assinar]` | `pJecOOv0Sqxippeu` | **inativo** | Legado — desativado em 23/08/2026, substituído pelos fluxos URC |
 | `[Termo LGPD - Assinado]` | `36Z66pbeI25m2MbJ` | **inativo** | Legado — desativado em 23/08/2026; a Evolution API foi reapontada para `/webhook/TERMOS-URC-ASSINADOS` |
 | `[Termo LGPD - Assinado]` | `36Z66pbeI25m2MbJ` | ativo | Processa a resposta do parceiro no WhatsApp ("1"=aceito, "2"=recusado): gera PDF assinado (hash SHA-256), grava no bucket `TermosAceite`, atualiza `parceiros` e sincroniza o FOCO (`TermoAceiteLGPD__c`) |

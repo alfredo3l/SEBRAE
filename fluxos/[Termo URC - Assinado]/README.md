@@ -38,7 +38,7 @@ processar as próprias mensagens).
 ```
 Webhook (POST /webhook/TERMOS-URC-ASSINADOS)
   → insntancia (Set: instancia = "SEBRAE")
-  → Busca Pendentes (Supabase: view vw_documentos_pendentes, telefone eq <normalizado do remoteJid>)
+  → Busca Pendentes (Supabase: view vw_documentos_pendentes, telefone_chave eq <DDD + 8 últimos dígitos do remoteJid>)
   → Identifica Documento (Code — ver Code/Identifica_Documento/)
   → Switch (acao)
       ├─ Aceito     → seta_Dados → Download logo → converte Base 64 → Saida_HTML
@@ -128,6 +128,21 @@ Causa: valores com **parênteses e hífen** não casam no filtro do nó Supabase
 Correção: a view expõe **`telefone_digitos`** (e `cpf_digitos`) — apenas números — e o nó filtra
 por ela, com a expressão extraindo só dígitos do `remoteJid` (com o ajuste do 9º dígito).
 Use sempre essas colunas ao filtrar por telefone/CPF em nós do n8n.
+
+## Fixo com WhatsApp e celular sem o 9: chave DDD + 8 dígitos (16/09/2026)
+
+O "ajuste do 9º dígito" acima (acrescentar um 9 quando o JID tem 10 dígitos) resolvia o
+celular antigo registrado sem o 9, mas **quebrava o telefone fixo com WhatsApp Business**:
+o JID `556733895349` virava `67933895349` e não casava com o cadastro `(67)3389-5349` —
+a resposta "1A" desse cliente cairia em "sem documento pendente", em silêncio.
+
+Correção: a view ganhou **`telefone_chave`** = DDD + últimos 8 dígitos
+(`supabase_view_pendentes_telefone_chave.sql`, aplicada) e o `Busca Pendentes` filtra por ela
+aplicando a **mesma regra ao JID** (`n.slice(0,2) + n.slice(-8)` quando há ≥ 10 dígitos).
+Resultado da chave nos três casos: fixo `556733895349` → `6733895349`; celular sem 9
+`556792451961` → `6792451961`; celular com 9 `5567992451961` → `6792451961` (igual ao anterior —
+é o mesmo número). O Code `Identifica Documento` ainda calcula `telefone_digitos` com o 9
+acrescentado, mas esse campo é **só informativo** na saída do nó; a busca não depende dele.
 
 ## Cuidado com duplicação de itens
 

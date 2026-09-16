@@ -90,7 +90,11 @@ function dataHojeBR() {
  */
 const CAMPO_TELEFONE = {
     id: 'telefone', label: 'Telefone (WhatsApp)', placeholder: '(00)00000-0000',
-    valor: c => c.parceiro.telefone || ''
+    // Máscara e valor sempre no padrão do sistema — fixo (00)0000-0000 ou
+    // celular (00)00000-0000 — porque é esse texto que vai ao termo, ao
+    // cadastro e ao FOCO
+    mascara: 'telefone',
+    valor: c => formatarTelefoneParaCadastro(c.parceiro.telefone || '')
 };
 const CAMPO_EMAIL = {
     id: 'email', label: 'E-mail', placeholder: 'email@exemplo.com',
@@ -525,7 +529,8 @@ function renderCampoDocumento(campo, ctx) {
     const travado = campo.auto || (campo.autoFoco && temValor(valorInicial));
     const readonly = travado ? ' readonly class="campo-auto"' : '';
     const badge = travado ? (campo.autoFoco ? tagAutoFoco : tagAuto) : tagEdit;
-    const mascara = campo.mascara === 'cnpj' ? ' oninput="mascaraCNPJDoc(this)"' : '';
+    const mascara = campo.mascara === 'cnpj' ? ' oninput="mascaraCNPJDoc(this)"'
+                  : campo.mascara === 'telefone' ? ' oninput="mascaraTelefone(this)" maxlength="14" inputmode="tel"' : '';
     const hint = campo.autoFoco ? '<small class="doc-form-hint" hidden></small>' : '';
     return `<div class="doc-form-group${full}" data-campo="${campo.id}">
         <label>${escHTML(campo.label)} ${badge}</label>
@@ -538,6 +543,15 @@ function renderCampoDocumento(campo, ctx) {
  * Aplica no formulário os valores salvos em documentos.dados_formulario
  * (retomada de um documento já gerado).
  */
+/** Cópia de dados_formulario sem telefone/e-mail (dados do cliente, vêm do cadastro) */
+function semCamposDeContato(dados) {
+    if (!dados) return dados;
+    const copia = { ...dados };
+    delete copia.telefone;
+    delete copia.email;
+    return copia;
+}
+
 function aplicarDadosNoFormulario(slug, dados) {
     if (!dados) return;
     const form = formDoDocumento(slug);
@@ -705,6 +719,9 @@ function lerDadosFormularioDocumento(slug = _docTipoAtivo) {
         else if (inp.type === 'radio') { if (inp.checked) dados[inp.name] = inp.value; }
         else dados[inp.name] = inp.value;
     });
+    // Telefone sempre no padrão do sistema: é o texto que vai ao termo (HTML/PDF),
+    // a dados_formulario e ao payload do envio
+    if (typeof dados.telefone === 'string') dados.telefone = formatarTelefoneParaCadastro(dados.telefone.trim());
     return dados;
 }
 
@@ -751,7 +768,8 @@ function formContato() {
 function dadosContatoAtuais() {
     const form = formContato();
     return {
-        telefone: (form?.querySelector('[name="telefone"]')?.value || '').trim(),
+        // Normalizado: o consultor pode ter colado "67 99245 1961" antes de a máscara agir
+        telefone: formatarTelefoneParaCadastro((form?.querySelector('[name="telefone"]')?.value || '').trim()),
         email: (form?.querySelector('[name="email"]')?.value || '').trim()
     };
 }
@@ -781,8 +799,8 @@ async function salvarContatoDoFormulario() {
         aviso.style.display = 'block';
     };
 
-    if (telefone && telefone.replace(/\D/g, '').length < 10) {
-        mostrar('documento-aviso-erro', 'Telefone inválido. Digite o telefone completo com DDD.');
+    if (telefone && !telefoneValido(telefone)) {
+        mostrar('documento-aviso-erro', 'Telefone inválido. Digite o DDD e o número completo (fixo ou celular).');
         return;
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -800,61 +818,8 @@ async function salvarContatoDoFormulario() {
     aviso.style.display = 'none';
 
     try {
-        // 1) Cadastro no Supabase
-        const atualizacao = {};
-        if (telefone) atualizacao.telefone = telefone;
-        atualizacao.email = email || null;
-
-        const { error } = await supabaseClient
-            .from('parceiros')
-            .update(atualizacao)
-            .eq('id', _docParceiro.id);
-
-        if (error) {
-            mostrar('documento-aviso-erro', 'Erro ao salvar no cadastro: ' + error.message);
-            return;
-        }
-
-        Object.assign(_docParceiro, atualizacao);
-        if (typeof invalidarCacheParceiro === 'function') invalidarCacheParceiro(_docParceiro.id);
-
-        // O contato é do cliente: replica o valor salvo em todas as abas
-        if (telefone) espelharCampoCliente('telefone', telefone, null);
-        if (email) espelharCampoCliente('email', email, null);
-
-        // 2) Sincronização no FOCO (Contact)
-        let msg = 'Contato do cliente atualizado com sucesso.';
-        let contactId = _docContexto.foco?.Id || _docParceiro.id_contato_salesforce || null;
-
-        if (!contactId) {
-            contactId = await buscarContactIdSalesforce(_docParceiro.cpf, _docParceiro.id_salesforce);
-            if (contactId) {
-                await supabaseClient
-                    .from('parceiros')
-                    .update({ id_contato_salesforce: contactId })
-                    .eq('id', _docParceiro.id);
-                _docParceiro.id_contato_salesforce = contactId;
-            }
-        }
-
-        if (contactId) {
-            try {
-                const campos = {};
-                if (telefone) campos.Phone = telefone;
-                if (email) campos.Email = email;
-                await atualizarContatoSebrae(contactId, campos);
-                msg = 'Contato do cliente atualizado no cadastro e no FOCO.';
-            } catch (err) {
-                console.error('Erro ao sincronizar contato no FOCO:', err);
-                msg = 'Contato salvo no cadastro. <b>Atenção:</b> não foi possível atualizar no FOCO ('
-                    + (err.message || 'erro desconhecido') + ').';
-            }
-        } else {
-            msg = 'Contato salvo no cadastro. <b>Atenção:</b> este cliente não foi localizado no FOCO, '
-                + 'então os dados não foram atualizados lá.';
-        }
-
-        mostrar('documento-aviso-sucesso', msg);
+        const r = await gravarContatoCliente({ telefone, email });
+        mostrar(r.ok ? 'documento-aviso-sucesso' : 'documento-aviso-erro', r.msg);
     } catch (err) {
         console.error('Erro ao salvar contato:', err);
         mostrar('documento-aviso-erro', 'Erro inesperado ao salvar. Tente novamente.');
@@ -865,10 +830,139 @@ async function salvarContatoDoFormulario() {
     }
 }
 
+/**
+ * Grava telefone/e-mail no cadastro (parceiros) e sincroniza Phone/Email do
+ * Contact no FOCO. Núcleo compartilhado pelo botão "Salvar contato do cliente"
+ * e pela sincronização automática no envio. O telefone já deve vir no padrão
+ * (formatarTelefoneParaCadastro) — é esse texto que vai para os três lugares.
+ * Retorna { ok, msg, foco } — ok=false só quando o cadastro não foi gravado.
+ */
+async function gravarContatoCliente({ telefone, email }) {
+    const atualizacao = {};
+    if (telefone) atualizacao.telefone = telefone;
+    atualizacao.email = email || null;
+
+    const { error } = await supabaseClient
+        .from('parceiros')
+        .update(atualizacao)
+        .eq('id', _docParceiro.id);
+
+    if (error) {
+        return { ok: false, foco: false, msg: 'Erro ao salvar no cadastro: ' + escHTML(error.message) };
+    }
+
+    Object.assign(_docParceiro, atualizacao);
+    if (typeof invalidarCacheParceiro === 'function') invalidarCacheParceiro(_docParceiro.id);
+
+    // O contato é do cliente: replica o valor salvo em todas as abas
+    if (telefone) espelharCampoCliente('telefone', telefone, null);
+    if (email) espelharCampoCliente('email', email, null);
+
+    // Sincronização no FOCO (Contact)
+    let contactId = _docContexto.foco?.Id || _docParceiro.id_contato_salesforce || null;
+
+    if (!contactId) {
+        contactId = await buscarContactIdSalesforce(_docParceiro.cpf, _docParceiro.id_salesforce);
+        if (contactId) {
+            await supabaseClient
+                .from('parceiros')
+                .update({ id_contato_salesforce: contactId })
+                .eq('id', _docParceiro.id);
+            _docParceiro.id_contato_salesforce = contactId;
+        }
+    }
+
+    if (!contactId) {
+        return {
+            ok: true, foco: false,
+            msg: 'Contato salvo no cadastro. <b>Atenção:</b> este cliente não foi localizado no FOCO, '
+                + 'então os dados não foram atualizados lá.'
+        };
+    }
+
+    try {
+        const campos = {};
+        if (telefone) campos.Phone = telefone;
+        if (email) campos.Email = email;
+        await atualizarContatoSebrae(contactId, campos);
+        return { ok: true, foco: true, msg: 'Contato do cliente atualizado no cadastro e no FOCO.' };
+    } catch (err) {
+        console.error('Erro ao sincronizar contato no FOCO:', err);
+        return {
+            ok: true, foco: false,
+            msg: 'Contato salvo no cadastro. <b>Atenção:</b> não foi possível atualizar no FOCO ('
+                + escHTML(err.message || 'erro desconhecido') + ').'
+        };
+    }
+}
+
+/**
+ * Antes de enviar: se o telefone/e-mail digitado nos formulários difere do
+ * cadastro, grava no cadastro e sincroniza no FOCO — o termo nunca sai para um
+ * número diferente do que está em "Editar Cliente". Compara telefone por
+ * dígitos (formatos diferentes do mesmo número não contam como mudança).
+ * Retorna null quando nada mudou; senão o resultado de gravarContatoCliente.
+ */
+async function sincronizarContatoAntesDoEnvio() {
+    const { telefone, email } = dadosContatoAtuais();
+    const p = _docParceiro;
+
+    const telefoneMudou = telefone && digitosTelefone(telefone) !== digitosTelefone(p.telefone);
+    const emailMudou = email && email.toLowerCase() !== String(p.email || '').toLowerCase();
+    if (!telefoneMudou && !emailMudou) return null;
+
+    return gravarContatoCliente({
+        telefone: telefoneMudou ? telefone : '',
+        email: email || p.email || ''
+    });
+}
+
 // ===== Envio do documento (webhook n8n) =====
 
 // Webhook único dos Termos URC (todos os termos, inclusive o LGPD)
 const WEBHOOK_TERMOS_URC = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC';
+
+// Webhook que pergunta à Evolution API se o telefone tem WhatsApp e qual é o
+// JID real (fluxo [Termo URC - Verifica WhatsApp]). Não envia nada ao cliente.
+const WEBHOOK_VERIFICA_WHATSAPP = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-VERIFICA';
+
+// Resultado da última verificação de WhatsApp do telefone que receberá os termos:
+// { telefone, ok, exists, whatsapp, jid, motivo }. Null enquanto não verificado.
+let _docWhatsApp = null;
+// Contador que invalida verificações antigas (o consultor pode voltar à edição,
+// trocar o telefone e retornar antes de a primeira resposta chegar)
+let _docWhatsAppTicket = 0;
+
+/**
+ * Consulta o webhook de verificação. Nunca lança: falha de rede ou do serviço
+ * volta como { ok: false, exists: null } — o envio não é bloqueado nesse caso,
+ * só avisado (a Evolution é a mesma que faria o envio; se ela está fora, o
+ * consultor precisa saber, mas não pode ficar preso por uma verificação).
+ */
+async function verificarWhatsApp(telefone) {
+    const base = { telefone, ok: false, exists: null, whatsapp: null, jid: null, motivo: null };
+    try {
+        const resp = await fetch(WEBHOOK_VERIFICA_WHATSAPP, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telefone })
+        });
+        if (!resp.ok) {
+            return { ...base, motivo: `serviço de verificação respondeu ${resp.status}` };
+        }
+        const r = await resp.json();
+        return {
+            ...base,
+            ok: r.ok !== false,
+            exists: typeof r.exists === 'boolean' ? r.exists : null,
+            whatsapp: r.whatsapp || null,
+            jid: r.jid || null,
+            motivo: r.motivo || null
+        };
+    } catch (e) {
+        return { ...base, motivo: e?.message || 'erro de conexão' };
+    }
+}
 
 /**
  * Monta o payload enviado ao n8n: dados do cliente, do documento, os campos
@@ -880,8 +974,14 @@ async function montarPayloadEnvio(slug, codigoResposta, lote) {
     const campos = lerDadosFormularioDocumento(slug);
     const p = _docParceiro;
 
-    const telefone = campos.telefone || p.telefone || null;
+    const telefone = formatarTelefoneParaCadastro(campos.telefone || p.telefone || '') || null;
     const email = campos.email || p.email || _docContexto.foco?.Email || null;
+
+    // JID devolvido pela Evolution para ESTE telefone (celular antigo do 67 pode
+    // estar registrado sem o 9). Se a verificação foi de outro número, não vale.
+    const digitos = t => String(t || '').replace(/\D/g, '');
+    const whatsapp = (_docWhatsApp && _docWhatsApp.exists && digitos(_docWhatsApp.telefone) === digitos(telefone))
+        ? _docWhatsApp.whatsapp : null;
 
     const payload = {
         // --- Campos na raiz: compatíveis com o fluxo n8n atual ---
@@ -908,6 +1008,9 @@ async function montarPayloadEnvio(slug, codigoResposta, lote) {
             cpf: p.cpf,
             cnpj: campos.cnpj || null,
             telefone: telefone,
+            // Número exato do WhatsApp (sem "@s.whatsapp.net"); o n8n usa como
+            // remoteJid e cai no "55 + dígitos" quando vier nulo
+            whatsapp: whatsapp,
             email: email,
             account_id: p.id_salesforce || null,
             contact_id: p.id_contato_salesforce || _docContexto.foco?.Id || null
@@ -957,7 +1060,7 @@ async function enviarDocumentoWebhook(slug, codigoResposta, lote) {
 function validarDadosEnvio() {
     const contato = dadosContatoAtuais();
     const p = _docParceiro;
-    const telefone = contato.telefone || p.telefone || '';
+    const telefone = formatarTelefoneParaCadastro(contato.telefone || p.telefone || '');
     const email = contato.email || p.email || _docContexto.foco?.Email || '';
     const total = _docTipos.length;
 
@@ -966,9 +1069,96 @@ function validarDadosEnvio() {
         { label: 'Cadastro validado no FOCO', ok: !!_docContexto.foco },
         { label: 'Nome válido', ok: !!(p.nome_razao_social && p.nome_razao_social.length > 2) },
         { label: 'Telefone válido', ok: telefone.replace(/\D/g, '').length >= 10 },
+        // Preenchido depois pela verificação assíncrona (ver mostrarTelaEnvio)
+        badgeWhatsApp(_docWhatsApp, telefone),
         { label: 'E-mail válido', ok: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) },
         { label: total > 1 ? `${total} documentos gerados` : 'Documento gerado', ok: true, neutro: true }
     ];
+}
+
+/**
+ * Badge "Telefone com WhatsApp" a partir do resultado da verificação:
+ * pendente (verificando), ok (tem), erro (não tem) ou neutro (não foi
+ * possível verificar — não bloqueia).
+ */
+function badgeWhatsApp(r, telefone) {
+    const id = 'whatsapp';
+    if (!r || r.telefone !== telefone) return { id, label: 'Verificando WhatsApp…', pendente: true };
+    if (r.exists === true) return { id, label: 'Telefone com WhatsApp', ok: true };
+    if (r.exists === false) return { id, label: 'Telefone sem WhatsApp', ok: false };
+    return { id, label: 'WhatsApp não verificado', ok: true, neutro: true };
+}
+
+/** Desenha os badges de validação da etapa de envio */
+function renderValidacoesEnvio(itens) {
+    const cont = document.getElementById('envio-validacoes');
+    cont.innerHTML = itens.map(v => {
+        let cls, icone;
+        if (v.pendente) { cls = 'validacao-badge-warn'; icone = 'spinner fa-spin'; }
+        else if (v.neutro) { cls = 'validacao-badge-warn'; icone = v.id === 'whatsapp' ? 'question' : 'file-lines'; }
+        else if (v.ok) { cls = 'validacao-badge-success'; icone = 'check'; }
+        else { cls = 'validacao-badge-danger'; icone = 'times'; }
+        const attr = v.id ? ` data-validacao="${v.id}"` : '';
+        return `<span class="validacao-badge ${cls}"${attr}><i class="fas fa-${icone}"></i> ${escHTML(v.label)}</span>`;
+    }).join('');
+}
+
+/**
+ * Verifica se o telefone tem WhatsApp e aplica o resultado na etapa de envio:
+ * sem WhatsApp o botão "Enviar" fica bloqueado e o aviso explica o que fazer;
+ * com a verificação indisponível o envio segue, com aviso. O ticket descarta
+ * respostas de verificações anteriores (telefone trocado no meio do caminho).
+ */
+async function verificarWhatsAppParaEnvio(telefone) {
+    const ticket = ++_docWhatsAppTicket;
+    const btn = document.getElementById('btn-envio-confirmar');
+    const aviso = document.getElementById('envio-aviso');
+
+    // Sem telefone utilizável nem vale a viagem: fica bloqueado
+    if (telefone.replace(/\D/g, '').length < 10) {
+        _docWhatsApp = { telefone, ok: true, exists: false, whatsapp: null, jid: null, motivo: 'telefone inválido' };
+        aplicarResultadoWhatsApp(telefone);
+        return;
+    }
+
+    btn.disabled = true;
+    const r = await verificarWhatsApp(telefone);
+    if (ticket !== _docWhatsAppTicket) return; // resposta velha: outra verificação já começou
+
+    _docWhatsApp = r;
+    aplicarResultadoWhatsApp(telefone);
+}
+
+/** Pinta badge, aviso e botão conforme _docWhatsApp (para o telefone informado) */
+function aplicarResultadoWhatsApp(telefone) {
+    const btn = document.getElementById('btn-envio-confirmar');
+    const aviso = document.getElementById('envio-aviso');
+    const r = _docWhatsApp;
+
+    renderValidacoesEnvio(validarDadosEnvio());
+
+    if (r && r.exists === false) {
+        btn.disabled = true;
+        aviso.className = 'documento-aviso documento-aviso-erro';
+        aviso.innerHTML = `<i class="fas fa-triangle-exclamation"></i> O telefone <b>${escHTML(telefone || '—')}</b> ` +
+            `não tem WhatsApp, então os documentos <b>não podem ser enviados</b>. ` +
+            `Volte à edição, corrija o telefone do cliente (botão "Salvar contato do cliente") e retorne a esta etapa.`;
+        aviso.style.display = 'block';
+        return;
+    }
+
+    if (r && r.exists === null) {
+        // Verificação indisponível: não bloqueia, mas avisa
+        btn.disabled = false;
+        aviso.className = 'documento-aviso documento-aviso-alerta';
+        aviso.innerHTML = `<i class="fas fa-circle-info"></i> Não foi possível confirmar se o telefone tem WhatsApp ` +
+            `(${escHTML(r.motivo || 'serviço indisponível')}). O envio pode prosseguir, mas confira o número com o cliente.`;
+        aviso.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = false;
+    aviso.style.display = 'none';
 }
 
 /**
@@ -1086,14 +1276,11 @@ async function executarGeracao() {
 function mostrarTelaEnvio() {
     const total = _docTipos.length;
     const d = dadosContatoAtuais();
+    const telefone = formatarTelefoneParaCadastro(d.telefone || _docParceiro.telefone || '');
 
-    // Validações
-    const cont = document.getElementById('envio-validacoes');
-    cont.innerHTML = validarDadosEnvio().map(v => {
-        const cls = v.neutro ? 'validacao-badge-warn' : (v.ok ? 'validacao-badge-success' : 'validacao-badge-danger');
-        const icone = v.neutro ? 'file-lines' : (v.ok ? 'check' : 'times');
-        return `<span class="validacao-badge ${cls}"><i class="fas fa-${icone}"></i> ${escHTML(v.label)}</span>`;
-    }).join('');
+    // Validações (o badge do WhatsApp entra como "verificando" e é atualizado
+    // quando a Evolution responder)
+    renderValidacoesEnvio(validarDadosEnvio());
 
     // Dados do envio
     document.getElementById('envio-doc-nome').textContent = total > 1
@@ -1117,6 +1304,10 @@ function mostrarTelaEnvio() {
     btnEnviar.querySelector('.btn-text').innerHTML = total > 1
         ? '<i class="fab fa-whatsapp"></i> Enviar todos'
         : '<i class="fab fa-whatsapp"></i> Enviar';
+
+    // Só libera o "Enviar" depois de saber se o telefone tem WhatsApp
+    // (sem await: a tela aparece na hora e o badge atualiza quando responder)
+    verificarWhatsAppParaEnvio(telefone);
 
     // Alterna as etapas e o cabeçalho
     document.getElementById('documento-edicao').style.display = 'none';
@@ -1159,6 +1350,12 @@ async function confirmarEnvioEmLote() {
     const btn = document.getElementById('btn-envio-confirmar');
     const total = _docTipos.length;
 
+    // Rede de segurança do botão desabilitado: sem WhatsApp não reserva letra nem envia
+    if (_docWhatsApp && _docWhatsApp.exists === false) {
+        aplicarResultadoWhatsApp(_docWhatsApp.telefone);
+        return;
+    }
+
     btn.disabled = true;
     btn.querySelector('.btn-text').style.display = 'none';
     btn.querySelector('.spinner').style.display = 'inline-block';
@@ -1166,6 +1363,7 @@ async function confirmarEnvioEmLote() {
     const enviados = [];
     const falhas = [];
     const preparados = [];
+    let avisoContato = '';
 
     const avisar = (texto) => {
         if (total > 1) {
@@ -1176,6 +1374,28 @@ async function confirmarEnvioEmLote() {
             aviso.style.display = 'none';
         }
     };
+
+    // ===== Fase 0: contato do cliente = o do formulário =====
+    // Telefone/e-mail alterados no formulário vão para o cadastro (e FOCO)
+    // antes de qualquer envio, para "Editar Cliente" e o termo baterem.
+    try {
+        avisar('Atualizando o contato do cliente…');
+        const sync = await sincronizarContatoAntesDoEnvio();
+        if (sync && !sync.ok) {
+            aviso.className = 'documento-aviso documento-aviso-erro';
+            aviso.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Não foi possível atualizar o telefone/e-mail do '
+                + 'cliente no cadastro (' + sync.msg + '). O envio foi interrompido.';
+            aviso.style.display = 'block';
+            btn.disabled = false;
+            btn.querySelector('.btn-text').style.display = 'flex';
+            btn.querySelector('.spinner').style.display = 'none';
+            return;
+        }
+        // Cadastro gravado, mas FOCO não: o resultado do envio traz o aviso
+        avisoContato = (sync && !sync.foco) ? sync.msg : '';
+    } catch (err) {
+        console.error('Erro ao sincronizar contato antes do envio:', err);
+    }
 
     // ===== Fase 1: reservar a letra de TODOS antes de enviar =====
     // A mensagem única do WhatsApp lista os documentos com suas letras, então
@@ -1261,7 +1481,7 @@ async function confirmarEnvioEmLote() {
         }
     }
 
-    mostrarResultadoEnvio(enviados, falhas);
+    mostrarResultadoEnvio(enviados, falhas, avisoContato);
 
     if (falhas.length === 0) {
         // Sucesso total: trava o botão para não reenviar por engano
@@ -1279,7 +1499,7 @@ async function confirmarEnvioEmLote() {
 }
 
 /** Escreve o resultado do envio (total, parcial ou nenhum) no aviso da tela */
-function mostrarResultadoEnvio(enviados, falhas) {
+function mostrarResultadoEnvio(enviados, falhas, avisoContato = '') {
     const aviso = document.getElementById('envio-aviso');
     const linhaEnviado = e => `<li><b>${escHTML(TERMOS_URC[e.slug].titulo)}</b> — responder ` +
         `<b>1${e.codigo}</b> (aceito) ou <b>2${e.codigo}</b> (não aceito)</li>`;
@@ -1304,6 +1524,8 @@ function mostrarResultadoEnvio(enviados, falhas) {
             'Clique em <b>Enviar novamente</b> para tentar só os que falharam, ' +
             'ou reenvie pelo Acompanhamento (a letra de resposta é preservada).';
     }
+    // Telefone/e-mail foram para o cadastro mas não para o FOCO: avisa junto
+    if (avisoContato) aviso.innerHTML += `<div class="envio-aviso-contato">${avisoContato}</div>`;
     aviso.style.display = 'block';
 }
 
@@ -1644,7 +1866,11 @@ async function inicializarPaginaDocumento() {
         est.cnpjSalvo = registro.dados_formulario?.cnpj || '';
         // Dados vindos de um formulário já preenchido: não conta como "não revisado"
         est.restaurado = !!registro.dados_formulario && Object.keys(registro.dados_formulario).length > 0;
-        aplicarDadosNoFormulario(slug, registro.dados_formulario);
+        // Telefone e e-mail são do CLIENTE, não do documento: na retomada
+        // prevalece o cadastro (já pintado no formulário), senão um rascunho
+        // antigo traria de volta o telefone anterior à edição do cliente.
+        // O CNPJ segue a regra própria (FOCO prevalece — ver cnpjSalvo).
+        aplicarDadosNoFormulario(slug, semCamposDeContato(registro.dados_formulario));
         if (registro.case_number && !_docContexto.interacao) {
             _docContexto.interacao = {
                 Id: registro.case_id_salesforce,

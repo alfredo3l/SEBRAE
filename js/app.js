@@ -778,7 +778,7 @@ async function carregarDetalhe() {
         validacoesContainer.innerHTML = '';
 
         const cpfValido = parceiro.cpf && parceiro.cpf.length === 14;
-        const telefoneValido = parceiro.telefone && parceiro.telefone.length >= 13;
+        const temTelefone = telefoneValido(parceiro.telefone);
         const nomeValido = parceiro.nome_razao_social && parceiro.nome_razao_social.length > 2;
 
         const termoLabel = parceiro.termo_aceito
@@ -788,7 +788,7 @@ async function carregarDetalhe() {
             { label: 'CPF Válido', valido: cpfValido },
             { label: 'Cadastrado no FOCO', valido: true },
             { label: 'Nome Válido', valido: nomeValido },
-            { label: 'Telefone Válido', valido: telefoneValido },
+            { label: 'Telefone Válido', valido: temTelefone },
             { label: termoLabel, valido: parceiro.termo_aceito }
         ];
 
@@ -803,7 +803,7 @@ async function carregarDetalhe() {
     // Atualiza mensagem informativa
     const infoMessage = document.querySelector('.info-message span');
     if (infoMessage) {
-        const telefoneValido = parceiro.telefone && parceiro.telefone.length >= 13;
+        const temTelefone = telefoneValido(parceiro.telefone);
         if (parceiro.recusado) {
             infoMessage.textContent = 'Este parceiro recusou o termo LGPD.';
             document.querySelector('.info-message').style.display = 'flex';
@@ -811,7 +811,7 @@ async function carregarDetalhe() {
             document.querySelector('.info-message').style.borderColor = '';
             document.querySelector('.info-message').style.color = '';
             document.querySelector('.info-message i') && (document.querySelector('.info-message i').style.color = '');
-        } else if (telefoneValido && !parceiro.termo_aceito) {
+        } else if (temTelefone && !parceiro.termo_aceito) {
             infoMessage.textContent = 'Este parceiro pode receber o termo LGPD via WhatsApp.';
             document.querySelector('.info-message').style.display = 'flex';
         } else if (parceiro.termo_aceito) {
@@ -1071,7 +1071,7 @@ function abrirModalEdicao() {
     document.getElementById('edit-id').value = parceiroAtual.id;
     document.getElementById('edit-nome').value = parceiroAtual.nome_razao_social;
     document.getElementById('edit-cpf').value = parceiroAtual.cpf;
-    document.getElementById('edit-telefone').value = parceiroAtual.telefone;
+    document.getElementById('edit-telefone').value = formatarTelefoneParaCadastro(parceiroAtual.telefone);
     // E-mail: usa o do cadastro; se ainda não houver, mostra o do FOCO
     const emailEl = document.getElementById('edit-email');
     if (emailEl) emailEl.value = parceiroAtual.email || parceiroAtual._foco?.Email || '';
@@ -1227,7 +1227,7 @@ async function salvarEdicao(event) {
     event.preventDefault();
 
     const id = document.getElementById('edit-id').value;
-    const telefone = document.getElementById('edit-telefone').value.trim();
+    const telefone = formatarTelefoneParaCadastro(document.getElementById('edit-telefone').value.trim());
     const email = (document.getElementById('edit-email')?.value || '').trim();
     const btnSalvar = document.getElementById('btn-salvar-edicao');
     const sucessoDiv = document.getElementById('edicao-sucesso');
@@ -1238,9 +1238,9 @@ async function salvarEdicao(event) {
     sucessoDiv.style.display = 'none';
     erroDiv.style.display = 'none';
 
-    // Validação do telefone
-    if (telefone.length < 14) {
-        erroMsg.textContent = 'Telefone inválido. Digite o telefone completo.';
+    // Validação do telefone: 10 (fixo) ou 11 (celular) dígitos
+    if (!telefoneValido(telefone)) {
+        erroMsg.textContent = 'Telefone inválido. Digite o DDD e o número completo (fixo ou celular).';
         erroDiv.style.display = 'flex';
         return;
     }
@@ -1372,14 +1372,29 @@ function lgpdParaBoolean(val) {
 }
 
 /**
- * Formata número de telefone para o padrão (XX)XXXXX-XXXX
+ * Formato padrão do telefone no sistema — o MESMO em parceiros, nos formulários
+ * dos termos, no payload do n8n e no Phone do FOCO:
+ *   celular (11 dígitos): (67)99245-1961
+ *   fixo    (10 dígitos): (67)3389-5349   ← fixo pode ter WhatsApp Business
+ * Só os dígitos importam; qualquer outra quantidade volta como veio.
  */
 function formatarTelefoneParaCadastro(tel) {
     if (!tel) return '';
-    const nums = tel.replace(/\D/g, '');
+    const nums = String(tel).replace(/\D/g, '');
     if (nums.length === 11) return `(${nums.substring(0, 2)})${nums.substring(2, 7)}-${nums.substring(7)}`;
     if (nums.length === 10) return `(${nums.substring(0, 2)})${nums.substring(2, 6)}-${nums.substring(6)}`;
     return tel;
+}
+
+/** Só os dígitos do telefone (para comparar números escritos de formas diferentes) */
+function digitosTelefone(tel) {
+    return String(tel || '').replace(/\D/g, '');
+}
+
+/** Telefone utilizável: 10 (fixo) ou 11 (celular) dígitos */
+function telefoneValido(tel) {
+    const n = digitosTelefone(tel).length;
+    return n === 10 || n === 11;
 }
 
 /**
@@ -1395,13 +1410,17 @@ function mascaraCPF(input) {
 }
 
 /**
- * Máscara de Telefone: (00)00000-0000
+ * Máscara de Telefone: (00)0000-0000 enquanto há até 10 dígitos (fixo),
+ * (00)00000-0000 ao chegar no 11º (celular). Antes o hífen era fixo após o
+ * 5º dígito e um fixo saía como (67)33214-567.
  */
 function mascaraTelefone(input) {
     let v = input.value.replace(/\D/g, '');
     v = v.substring(0, 11);
-    v = v.replace(/^(\d{2})(\d)/g, '($1)$2');
-    v = v.replace(/(\d{5})(\d)/, '$1-$2');
+    v = v.replace(/^(\d{2})(\d)/, '($1)$2');
+    v = v.length <= 12   // "(67)" + até 8 dígitos = fixo; o 9º dígito muda para o corte do celular
+        ? v.replace(/^(\(\d{2}\)\d{4})(\d)/, '$1-$2')
+        : v.replace(/^(\(\d{2}\)\d{5})(\d)/, '$1-$2');
     input.value = v;
 }
 
@@ -1413,7 +1432,7 @@ async function cadastrarParceiro(event) {
 
     const nome = document.getElementById('cad-nome').value.trim().toUpperCase();
     const cpf = document.getElementById('cad-cpf').value.trim();
-    const telefone = document.getElementById('cad-telefone').value.trim();
+    const telefone = formatarTelefoneParaCadastro(document.getElementById('cad-telefone').value.trim());
     const email = document.getElementById('cad-email')?.value.trim() || '';
     const btnSalvar = document.getElementById('btn-salvar');
     const sucessoDiv = document.getElementById('cadastro-sucesso');
@@ -1431,9 +1450,9 @@ async function cadastrarParceiro(event) {
         return;
     }
 
-    // Validação do telefone
-    if (telefone.length < 14) {
-        erroMsg.textContent = 'Telefone inválido. Digite o telefone completo.';
+    // Validação do telefone: 10 (fixo) ou 11 (celular) dígitos
+    if (!telefoneValido(telefone)) {
+        erroMsg.textContent = 'Telefone inválido. Digite o DDD e o número completo (fixo ou celular).';
         erroDiv.style.display = 'flex';
         return;
     }

@@ -2817,3 +2817,11 @@ body {
     border-color: #dee2e6;
     cursor: not-allowed;
 }
+
+/* Aviso de contato (cadastro atualizado, FOCO não) anexado ao resultado do envio */
+.envio-aviso-contato {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.15);
+    font-size: 0.8rem;
+}
