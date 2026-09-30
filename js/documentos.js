@@ -378,6 +378,48 @@ const TERMOS_URC = {
         }
     },
 
+    'baixa': {
+        titulo: 'Termo de Responsabilidade — Baixa',
+        descricao: 'Orientação para Baixa do registro de Microempreendedor Individual.',
+        campos: [
+            ...camposBaseTermo(),
+            { id: 'rg', label: 'RG', placeholder: '000000000' },
+            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            // Checklist exatamente como no modelo oficial (sem "Outros")
+            { id: 'documentos', label: 'Documentos utilizados na Baixa', tipo: 'checklist', full: true, opcoes: [
+                'Certificado de Condição de Microempreendedor Individual', 'CPF', 'RG', 'Título Eleitoral',
+                'Comprovante de endereço', 'Declaração IRPF', 'Senha do portal GOV'
+            ] },
+            CAMPO_OBSERVACOES
+        ],
+        template(d) {
+            const checklist = (this.campos.find(c => c.id === 'documentos').opcoes)
+                .map((rotulo, i) => `${docCheck(d[`documentos_${i}`])} ${escHTML(rotulo)};`).join('<br>');
+            // Qualificação do modelo: CNPJ, RG, CPF e fone — RG sem valor vira
+            // só "portador do CPF" (não pode sobrar o "e"), como na Formalização
+            const documentosPessoais = temValor(d.rg)
+                ? `portador do RG n.º <b>${escHTML(String(d.rg).trim())}</b> e CPF n.º ${docValor(d.cpf)}`
+                : `portador do CPF n.º ${docValor(d.cpf)}`;
+            return `
+                <h3>TERMO DE RESPONSABILIDADE – BAIXA</h3>
+                <p>Eu, ${docValor(d.nome)}, Empreendedor Individual${trechoSe(d.cnpj, v => `, devidamente inscrito no CNPJ sob n.º ${v}`)}, ${documentosPessoais}${trechoSe(d.telefone, v => `, fone: ${v}`)}, declaro para os devidos fins, que procurei
+                o SEBRAE/MS - Serviço de Apoio às Micro e Pequenas Empresas do Estado de Mato Grosso do Sul, associação
+                civil sem fins lucrativos, inscrito no CNPJ nº. 15.419.591/0001-03, com o objetivo de solicitar
+                orientação para Baixa do registro de Microempreendedor Individual, tendo pleno conhecimento que os
+                dados cadastrais utilizados no momento da Baixa são referência ao atendente e de exclusiva
+                responsabilidade do declarante.</p>
+                <p>Declaro, também, que antes da confirmação da Baixa do cadastro no Portal do Empreendedor, li
+                atentamente os dados e confirmei ao atendente do SEBRAE/MS, não cabendo, desse modo, qualquer tipo de
+                reclamação judicial ou não, após a efetivação das ações buscadas junto ao SEBRAE/MS.</p>
+                <p>O declarante utilizou, no momento da Baixa do Certificado de condição de Microempreendedor
+                Individual, os seguintes documentos:</p>
+                <p>${checklist}</p>
+                ${blocoProcessoObservacoes(d)}
+                <p>Por ser verdade, firmo o presente.</p>
+                ${blocoLocalDataAssinatura(d.local ? d.local + '/MS' : '', 'Assinatura do Empreendedor Individual')}`;
+        }
+    },
+
     'declaracao-responsabilidade': {
         titulo: 'Declaração de Responsabilidade',
         descricao: 'Declaração Anual DASN SIMEI — Declaração Anual para o Microempreendedor Individual.',

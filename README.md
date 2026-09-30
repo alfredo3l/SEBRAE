@@ -2,7 +2,7 @@
 
 Sistema de gestão de **termos e declarações URC** para clientes do SEBRAE/MS. Permite cadastro e consulta de clientes, preenchimento e geração dos termos, envio e coleta do aceite via WhatsApp, anexação automática do documento assinado no Salesforce/FOCO e gestão de usuários com controle de acesso por perfis.
 
-O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos termos por atendimento**: Termo LGPD, Parcelamento de Débitos do MEI (RFB e PGFN), Reenquadramento SIMEI, Termo de Responsabilidade (Formalização e Alteração) e Declaração de Responsabilidade (DASN).
+O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos termos por atendimento**: Termo LGPD, Parcelamento de Débitos do MEI (RFB e PGFN), Reenquadramento SIMEI, Termo de Responsabilidade (Formalização, Alteração e Baixa) e Declaração de Responsabilidade (DASN).
 
 ---
 
@@ -54,7 +54,7 @@ O sistema nasceu para um único termo (Aceite LGPD) e hoje atende **múltiplos t
 ### Seleção de documento (`detalhe.html`)
 
 - Card **“Atendimento em andamento”**: nº da interação (`CaseNumber` do último Case do cliente no FOCO) e consultor logado.
-- **Grade de cards** com os 7 termos do catálogo. Clicar **marca ou desmarca** o card (não navega mais): dá para tratar **vários termos no mesmo atendimento**. Uma barra fixa mostra a contagem, os termos escolhidos e o botão **“Prosseguir com N documentos”**, que abre `documento?id=<parceiro>&tipos=a,b,c`.
+- **Grade de cards** com os 8 termos do catálogo. Clicar **marca ou desmarca** o card (não navega mais): dá para tratar **vários termos no mesmo atendimento**. Uma barra fixa mostra a contagem, os termos escolhidos e o botão **“Prosseguir com N documentos”**, que abre `documento?id=<parceiro>&tipos=a,b,c`.
 - **Botões (conforme permissão)**: Buscar Cliente, **Editar Cliente** (telefone e e-mail, com sincronização no FOCO), Acompanhamento, Excluir e **Início**.
 
 ### Preenchimento e envio do termo (`documento.html`)
@@ -258,7 +258,7 @@ Múltiplos termos/documentos por parceiro — 1 linha por documento (o `parceiro
 |---|---|---|
 | id | uuid | PK (default: `gen_random_uuid()`) |
 | parceiro_id | uuid | FK → `parceiros.id` (on delete cascade) |
-| tipo_documento | text | Slug do catálogo (`termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`, `formalizacao`, `alteracao`, `declaracao-responsabilidade`) |
+| tipo_documento | text | Slug do catálogo (`termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`, `formalizacao`, `alteracao`, `baixa`, `declaracao-responsabilidade`) |
 | nome_documento | text | Título exibido (ex.: "Termo LGPD") |
 | status | text | `gerado` \| `enviado` \| `aceito` \| `nao_aceito` \| `recusado` |
 | salvo_foco | boolean | Documento anexado no FOCO (badge FOCO na lista) |

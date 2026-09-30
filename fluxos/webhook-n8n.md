@@ -123,7 +123,7 @@ O fluxo de envio também passou a gravar `documentos.status = enviado` **depois*
 ## Tipos de documento (`documento.tipo`)
 
 `termo-lgpd`, `parcelamento-mei`, `parcelamento-pgfn`, `reenquadramento-mei`,
-`formalizacao`, `alteracao`, `declaracao-responsabilidade`.
+`formalizacao`, `alteracao`, `baixa`, `declaracao-responsabilidade`.
 
 ## 2. Resposta do cliente (aceite/recusa)
 
