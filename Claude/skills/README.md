@@ -2,6 +2,13 @@
 
 Pasta onde ficam salvas as skills criadas para este projeto.
 
+## Skills
+
+| Skill | Para quê |
+|---|---|
+| `/foco-homologacao` | Aponta o FOCO para homologação (`hlg-gateway…/foco-stg`) — app local, n8n e Vercel |
+| `/foco-producao` | Aponta o FOCO para produção (`gateway…/foco`) — app local, n8n e Vercel |
+
 ## Convenção
 
 - Cada skill em sua própria subpasta: `Claude/skills/<nome-da-skill>/SKILL.md` (+ arquivos de apoio, se houver).

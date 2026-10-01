@@ -31,6 +31,11 @@ README-Alfredo.md
 .env
 .env.local
 .env.*.local
+# Credenciais do FOCO por ambiente (usadas por scripts/foco-ambiente.js e pelas skills /foco-*)
+.env.homologacao
+.env.producao
+# Levantamento de credenciais do FOCO (contém client secrets)
+docs/homologacao_conferir.md
 js/supabase-config.js
 
 # Midia local de apoio (gravacoes de reuniao, prints) - repositorio publico, nao versionar

@@ -11,6 +11,10 @@
 const SEBRAE_API_BASE    = process.env.SEBRAE_API_BASE    || 'https://hlg-gateway.sebrae.com.br/foco-stg';
 const SEBRAE_CLIENT_ID   = process.env.SEBRAE_CLIENT_ID;
 const SEBRAE_CLIENT_SECRET = process.env.SEBRAE_CLIENT_SECRET;
+// Ambiente do FOCO derivado do gateway (exposto no header X-Foco-Ambiente — sem segredo).
+// ⚠️ A mesma regra existe em api/sebrae/contact/[id].js e dev.js.
+const FOCO_AMBIENTE = /\/\/hlg-gateway\./.test(SEBRAE_API_BASE) ? 'homologacao'
+                    : /\/\/gateway\./.test(SEBRAE_API_BASE)     ? 'producao' : 'desconhecido';
 
 // Cache de token em memória (válido enquanto a instância estiver ativa)
 let _token = null;
@@ -44,6 +48,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('X-Foco-Ambiente', FOCO_AMBIENTE);
 
     if (req.method === 'OPTIONS') {
         return res.status(204).end();

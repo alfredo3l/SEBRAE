@@ -15,6 +15,9 @@ const PORT = process.env.PORT || 3000;
 const SEBRAE_API_BASE    = process.env.SEBRAE_API_BASE    || 'https://hlg-gateway.sebrae.com.br/foco-stg';
 const SEBRAE_CLIENT_ID   = process.env.SEBRAE_CLIENT_ID;
 const SEBRAE_CLIENT_SECRET = process.env.SEBRAE_CLIENT_SECRET;
+// Ambiente do FOCO derivado do gateway (exposto no header X-Foco-Ambiente — sem segredo)
+const FOCO_AMBIENTE = /\/\/hlg-gateway\./.test(SEBRAE_API_BASE) ? 'homologacao'
+                    : /\/\/gateway\./.test(SEBRAE_API_BASE)     ? 'producao' : 'desconhecido';
 
 if (!SEBRAE_CLIENT_ID || !SEBRAE_CLIENT_SECRET) {
     console.error('ERRO: Defina SEBRAE_CLIENT_ID e SEBRAE_CLIENT_SECRET no arquivo .env');
@@ -90,6 +93,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+    if (req.url.startsWith('/api/sebrae/')) res.setHeader('X-Foco-Ambiente', FOCO_AMBIENTE);
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -97,7 +101,15 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    const urlObj = new URL(req.url, `http://localhost:${PORT}`);
+    // req.url como "//" vira URL relativa a protocolo e faz o new URL lançar — sem o catch, o servidor cai
+    let urlObj;
+    try {
+        urlObj = new URL(req.url, `http://localhost:${PORT}`);
+    } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('400 - URL inválida');
+        return;
+    }
 
     // Rota da API SEBRAE - Query
     if (urlObj.pathname === '/api/sebrae/query') {
@@ -191,7 +203,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
     console.log(`\n  ✓ Servidor rodando em http://localhost:${PORT}`);
-    console.log(`  ✓ API SEBRAE disponível em http://localhost:${PORT}/api/sebrae/query\n`);
+    console.log(`  ✓ API SEBRAE disponível em http://localhost:${PORT}/api/sebrae/query`);
+    console.log(`  ✓ FOCO: ${FOCO_AMBIENTE.toUpperCase()} (${SEBRAE_API_BASE})\n`);
 
     // Abre o navegador após 1s
     setTimeout(() => {

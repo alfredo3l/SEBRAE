@@ -30,11 +30,13 @@ O token (`access_token`) é cacheado **em memória** no proxy e renovado quando 
 
 | Variável | Obrigatória | Descrição |
 |---|---|---|
-| `SEBRAE_API_BASE` | Não | Base do gateway. Default: homologação `https://hlg-gateway.sebrae.com.br/foco-stg` |
+| `SEBRAE_API_BASE` | Não | Base do gateway: homologação `https://hlg-gateway.sebrae.com.br/foco-stg` ou produção `https://gateway.sebrae.com.br/foco`. Sem a variável, o código cai em homologação — mas o `.env` e a Vercel a definem explicitamente |
 | `SEBRAE_CLIENT_ID` | Sim | Client ID do OAuth (não commitar) |
 | `SEBRAE_CLIENT_SECRET` | Sim | Client Secret do OAuth (não commitar) |
 
-Local: arquivo `.env` (copie de `.env.example`). Produção: painel de env vars da Vercel.
+Local: arquivo `.env` (copie de `.env.example`). App publicado: painel de env vars da Vercel.
+
+Para trocar o ambiente do FOCO (app local, n8n e Vercel) use as skills `/foco-homologacao` e `/foco-producao` ou `node scripts/foco-ambiente.js` (`status`, `testar`, `centralizar`, `aplicar`). As respostas de `/api/sebrae/*` trazem o header `X-Foco-Ambiente` (`homologacao` | `producao`).
 
 ## Endpoints do proxy
 
