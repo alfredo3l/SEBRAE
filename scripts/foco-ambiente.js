@@ -323,10 +323,10 @@ async function cmdAplicar(amb) {
     gravarEnvLocal(c);
     console.log(`.env local → ${c.base} (reinicie o "npm run dev" se estiver rodando)`);
 
-    // 4. Vercel — manual
-    console.log(`\nVercel (passo manual): Settings → Environment Variables → Production, troque
-   SEBRAE_API_BASE, SEBRAE_CLIENT_ID e SEBRAE_CLIENT_SECRET pelos valores de ${AMBIENTES[amb].arquivo}
-   e faça Redeploy do último deploy de produção. Depois rode "status" para conferir.`);
+    // 4. Vercel — fora do script (MCP da Vercel pela skill, ou painel)
+    console.log(`\nVercel (pendente): troque SEBRAE_API_BASE, SEBRAE_CLIENT_ID e SEBRAE_CLIENT_SECRET pelos
+   valores de ${AMBIENTES[amb].arquivo} — pelo "Passo Vercel" da skill /foco-${amb} (MCP) ou no painel —
+   e refaça o deploy de produção. Depois rode "status" para conferir.`);
 }
 
 // ---------- main ----------

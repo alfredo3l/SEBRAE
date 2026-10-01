@@ -8,6 +8,8 @@ Pasta onde ficam salvas as skills criadas para este projeto.
 |---|---|
 | `/foco-homologacao` | Aponta o FOCO para homologação (`hlg-gateway…/foco-stg`) — app local, n8n e Vercel |
 | `/foco-producao` | Aponta o FOCO para produção (`gateway…/foco`) — app local, n8n e Vercel |
+| `/banner-ligar` | Liga a faixa de ambiente (produção/homologação) no topo das telas |
+| `/banner-desligar` | Desliga a faixa de ambiente (mantém o JS para religar) |
 
 ## Convenção
 
