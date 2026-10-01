@@ -169,7 +169,7 @@ const TERMOS_URC = {
                 <p>Ao responder <b>"1 - Aceito"</b> no WhatsApp, o cliente recebe o PDF assinado digitalmente
                 (hash SHA-256) e o aceite é registrado com data e hora. A resposta <b>"2 - Não aceito"</b>
                 registra a recusa.</p>
-                <p>Processo/Interação nº ${docValor(d.interacao, '________________')} — Data do atendimento: ${docValor(d.data)}.</p>`;
+                ${blocoProcessoObservacoes(d)}`;
         }
     },
 

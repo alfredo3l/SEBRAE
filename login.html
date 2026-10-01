@@ -303,17 +303,40 @@
     <script>
         // Página para onde voltar depois de entrar (definida por auth.js ao
         // expirar a sessão); só aceita caminho interno, nunca URL externa.
+        // "/\evil.com" também é recusado: o navegador trata "\" como "/" e
+        // resolveria para //evil.com (site externo).
         const _destinoLogin = (function () {
             const alvo = new URLSearchParams(window.location.search).get('redirect') || '';
-            return /^\/[^/]/.test(alvo) || /^[a-z][a-z0-9-]*(\?|$)/i.test(alvo) ? alvo : '/';
+            return /^\/(?![/\\])/.test(alvo) || /^[a-z][a-z0-9-]*(\?|$)/i.test(alvo) ? alvo : '/';
         })();
 
-        // Verifica se já está logado
+        // Verifica se já está logado. getSession() só lê o localStorage e devolvia
+        // um token que o servidor já recusava — o login mandava de volta para a
+        // página, que voltava para cá: loop infinito. Por isso:
+        //  - com ?motivo= (sessão expirada / inativo) nunca redireciona sozinho;
+        //  - a sessão é validada no servidor com getUser();
+        //  - trava: no máximo 2 redirecionamentos automáticos em 30 s por aba.
         (async function() {
+            if (new URLSearchParams(window.location.search).get('motivo')) return;
+
             const { data: { session } } = await supabaseClient.auth.getSession();
-            if (session) {
-                window.location.href = _destinoLogin;
+            if (!session) return;
+
+            const { data, error } = await supabaseClient.auth.getUser();
+            if (error || !data?.user) {
+                try { await supabaseClient.auth.signOut({ scope: 'local' }); } catch (_) { }
+                return;
             }
+
+            const CHAVE = 'sbr_login_auto_redirect';
+            const agora = Date.now();
+            let recentes = [];
+            try { recentes = JSON.parse(sessionStorage.getItem(CHAVE) || '[]').filter(t => agora - t < 30000); } catch (_) { }
+            if (recentes.length >= 2) return; // algo está devolvendo para cá em loop: fica no login
+            recentes.push(agora);
+            try { sessionStorage.setItem(CHAVE, JSON.stringify(recentes)); } catch (_) { }
+
+            window.location.href = _destinoLogin;
         })();
 
         // Avisa por que o usuário voltou para cá (sessão expirada / conta inativa)
@@ -372,7 +395,11 @@
                     throw error;
                 }
 
-                // Login com sucesso - volta para onde o usuário estava
+                // Login com sucesso - zera as travas de sessão e volta para onde o usuário estava
+                try {
+                    sessionStorage.removeItem('sbr_login_auto_redirect');
+                    sessionStorage.removeItem('sbr_refresh_tentado');
+                } catch (_) { }
                 window.location.href = _destinoLogin;
 
             } catch (error) {

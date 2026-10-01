@@ -44,3 +44,5 @@ docs/image001.jpg
 docs/image002.jpg
 # Documento de integracao para o SEBRAE (fonte do artifact; decisao: nao versionar)
 docs/integracao-foco/integracao-foco-endpoints-ambientes.html
+# PDF de endpoints para a equipe tecnica do SEBRAE - CONTEM CREDENCIAIS (nunca versionar)
+docs/integracao-foco/Endpoints FOCO - Termos URC (homologacao e producao).pdf

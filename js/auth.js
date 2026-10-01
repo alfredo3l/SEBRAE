@@ -48,13 +48,54 @@ function ehPaginaLogin() {
     return window.location.pathname.includes('login');
 }
 
+// Uma única tentativa de renovar o token por aba antes de mandar ao login —
+// se a renovação "funcionar" mas o servidor seguir recusando, não recarrega de novo.
+const _CHAVE_REFRESH_TENTADO = 'sbr_refresh_tentado';
+
+/**
+ * Apaga a sessão guardada no navegador (sem depender do servidor). Sem isso,
+ * o login lia o token recusado do localStorage, achava que havia sessão e
+ * devolvia o usuário à página — loop infinito entre / e /login.
+ */
+async function limparSessaoLocal() {
+    _logoutIntencional = true; // o SIGNED_OUT abaixo não deve redirecionar de novo
+    try {
+        await supabaseClient.auth.signOut({ scope: 'local' });
+    } catch (_) { }
+    // Rede de segurança: remove a chave do supabase-js mesmo se o signOut falhar
+    try {
+        Object.keys(localStorage)
+            .filter(k => /^sb-.*-auth-token$/.test(k))
+            .forEach(k => localStorage.removeItem(k));
+    } catch (_) { }
+}
+
 /**
  * Manda o usuário para o login, guardando a página atual em `redirect`.
+ * Com motivo 'expirado', tenta antes renovar o token (uma vez por aba) e, se não
+ * der, limpa a sessão local para o login não devolver o usuário para cá.
  * @param {string} motivo - 'expirado' (sessão perdida) ou 'inativo'.
  */
-function redirecionarParaLogin(motivo) {
+async function redirecionarParaLogin(motivo) {
     if (_redirecionandoLogin || ehPaginaLogin()) return;
     _redirecionandoLogin = true;
+
+    if (motivo === 'expirado') {
+        let jaTentou = false;
+        try { jaTentou = sessionStorage.getItem(_CHAVE_REFRESH_TENTADO) === '1'; } catch (_) { }
+
+        if (!jaTentou) {
+            try { sessionStorage.setItem(_CHAVE_REFRESH_TENTADO, '1'); } catch (_) { }
+            try {
+                const { data, error } = await supabaseClient.auth.refreshSession();
+                if (!error && data?.session) {
+                    window.location.reload();
+                    return;
+                }
+            } catch (_) { }
+        }
+        await limparSessaoLocal();
+    }
 
     try {
         sessionStorage.removeItem(_CACHE_NOME);
@@ -90,7 +131,7 @@ function erroDeSessao(error) {
  */
 function tratarErroDeSessao(error) {
     if (!erroDeSessao(error)) return false;
-    redirecionarParaLogin('expirado');
+    void redirecionarParaLogin('expirado');
     return true;
 }
 
@@ -98,7 +139,7 @@ function tratarErroDeSessao(error) {
 // logout em outra aba): sai da tela em vez de deixar a página quebrada.
 supabaseClient.auth.onAuthStateChange(function (evento) {
     if (evento === 'SIGNED_OUT' && !_logoutIntencional) {
-        redirecionarParaLogin('expirado');
+        void redirecionarParaLogin('expirado');
     }
 });
 
@@ -206,6 +247,8 @@ async function verificarAutenticacao() {
 
     if (perfil) {
         void registrarUltimoAcessoThrottled();
+        // O token foi aceito pelo servidor: libera nova tentativa de renovação no futuro
+        try { sessionStorage.removeItem(_CHAVE_REFRESH_TENTADO); } catch (_) { }
     }
 
     const nome = perfil?.nome_completo || session.user.user_metadata?.nome || session.user.email;

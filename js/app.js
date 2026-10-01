@@ -1587,7 +1587,7 @@ async function executarBuscaParceiro() {
         if (ehCPF) {
             loadingTextoEl.textContent = 'Buscando CPF...';
         } else if (ehTelefone) {
-            loadingTextoEl.textContent = 'Buscando telefone (pode levar alguns segundos)...';
+            loadingTextoEl.textContent = 'Buscando telefone no FOCO (pode levar até 1 minuto)...';
         } else {
             loadingTextoEl.textContent = 'Buscando por nome (pode levar alguns segundos)...';
         }
@@ -1626,7 +1626,7 @@ async function executarBuscaParceiro() {
             loadingTextoEl.textContent = textoOriginalLoading;
         }
         _buscaEmAndamento = false;
-    }, 35000);
+    }, 70000); // acima dos 60 s da consulta (busca por telefone leva ~30 s no FOCO)
 
     try {
         const resultado = await buscarContatosSebrae(termo);

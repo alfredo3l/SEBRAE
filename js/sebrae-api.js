@@ -19,11 +19,30 @@ function formatarCPFSebrae(valor) {
 }
 
 /**
- * Detecta se o termo digitado parece um CPF.
+ * Detecta se o termo digitado parece um CPF. Antes, qualquer número de 8 a 11
+ * dígitos era tratado como CPF — inclusive "(67)99288-6950" —, e a busca por
+ * telefone nunca acontecia. Agora: parênteses/"+" = telefone; formato
+ * 000.000.000-00 = CPF; 11 dígitos corridos = CPF só se os dígitos
+ * verificadores baterem (celular com DDD também tem 11 dígitos).
  */
 function pareceCPF(termo) {
-    const nums = termo.replace(/\D/g, '');
-    return nums.length >= 8 && nums.length <= 11 && /^\d+$/.test(nums);
+    const t = String(termo).trim();
+    if (/[()+]/.test(t)) return false;
+    const nums = t.replace(/\D/g, '');
+    if (nums.length !== 11) return false;
+    if (/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(t)) return true;
+    return /^\d{11}$/.test(t) && cpfDigitosValidos(nums);
+}
+
+/** Confere os dois dígitos verificadores de um CPF de 11 dígitos */
+function cpfDigitosValidos(nums) {
+    if (/^(\d)\1{10}$/.test(nums)) return false;
+    const dv = (base) => {
+        const soma = [...base].reduce((s, n, i) => s + Number(n) * (base.length + 1 - i), 0);
+        const r = (soma * 10) % 11;
+        return r === 10 ? 0 : r;
+    };
+    return dv(nums.slice(0, 9)) === Number(nums[9]) && dv(nums.slice(0, 10)) === Number(nums[10]);
 }
 
 /**
@@ -41,34 +60,66 @@ function pareceTelefone(termo) {
  * - Caso contrário → busca por Name (LIKE)
  *
  * Para evitar que a tela pareça "travada" quando a API demora a responder
- * (principalmente em buscas por nome ou telefone), foi adicionado:
- * - Timeout com AbortController (15s)
- * - Limite menor de registros para buscas não indexadas (nome/telefone)
+ * (principalmente em buscas por telefone), cada consulta tem tempo-limite
+ * (AbortController, 60 s) e as buscas não indexadas trazem só os campos básicos.
  */
 async function buscarContatosSebrae(termo) {
-    let whereClause;
-    let limit = 200;
-
     if (pareceCPF(termo)) {
         const cpfFormatado = formatarCPFSebrae(termo);
-        whereClause = `CPF__c = '${cpfFormatado}'`;
-        limit = 200;
-    } else if (pareceTelefone(termo)) {
-        const tel = termo.replace(/\D/g, '');
-        whereClause = `Phone LIKE '%${tel}%' OR MobilePhone LIKE '%${tel}%'`;
-        limit = 50;
-    } else {
-        const escaped = termo.replace(/'/g, "\\'");
-        whereClause = `Name LIKE '%${escaped}%'`;
-        limit = 50;
+        return consultarContatosFoco(`SELECT FIELDS(ALL) FROM Contact WHERE CPF__c = '${cpfFormatado}' LIMIT 200`);
     }
 
-    const query = `SELECT FIELDS(ALL) FROM Contact WHERE ${whereClause} LIMIT ${limit}`;
+    if (pareceTelefone(termo)) {
+        // Telefone não tem índice no FOCO: a busca leva ~30 s (medido em 01/10/2026)
+        const padroes = padroesTelefoneFoco(termo);
+        const where = padroes.map(p => `Phone LIKE '${p}' OR MobilePhone LIKE '${p}'`).join(' OR ');
+        return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE ${where} LIMIT 50`);
+    }
+
+    // Nome: primeiro "começa com", que usa o índice do FOCO (~0,5 s); só se não
+    // achar nada tenta "contém" (sem índice, ~17 s — por isso só campos básicos).
+    // FIELDS(ALL) com "contém" passava de 40 s e estourava o tempo da tela.
+    const nome = escaparLikeSOQL(termo.trim());
+    const porInicio = await consultarContatosFoco(`SELECT FIELDS(ALL) FROM Contact WHERE Name LIKE '${nome}%' LIMIT 50`);
+    if ((porInicio.records || []).length) return porInicio;
+    return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE Name LIKE '%${nome}%' LIMIT 50`);
+}
+
+/** Campos que a lista de resultados da busca usa (ver mapearContatoParaTabela) */
+const CAMPOS_BUSCA_CONTATO = 'Id, AccountId, Name, CPF__c, Phone, MobilePhone, Email, TermoAceiteLGPD__c';
+
+/** Escapa aspas, barra e os curingas % e _ para um LIKE do SOQL */
+function escaparLikeSOQL(texto) {
+    return String(texto).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[%_]/g, '\\$&');
+}
+
+/**
+ * Padrões LIKE para achar um telefone no FOCO, que grava com máscara:
+ * "(67)99288-6950" (celular) ou "(67)3389-5349" (fixo). Buscar só os dígitos
+ * nunca encontrava ninguém. O padrão "%NNNNN-NNNN%" casa com ou sem DDD;
+ * o de dígitos corridos cobre cadastros gravados sem máscara.
+ */
+function padroesTelefoneFoco(termo) {
+    let d = String(termo).replace(/\D/g, '');
+    if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2); // DDI
+    const padroes = [`%${d}%`];
+    if (d.length >= 8) {
+        // 9 ou 11 dígitos: celular (5 antes do hífen); 8 ou 10: fixo (4 antes)
+        const antes = (d.length === 9 || d.length === 11) ? d.slice(-9, -4) : d.slice(-8, -4);
+        padroes.push(`%${antes}-${d.slice(-4)}%`);
+    } else if (d.length > 4) {
+        padroes.push(`%${d.slice(0, -4)}-${d.slice(-4)}%`);
+    }
+    return padroes;
+}
+
+/** Executa um SOQL de Contact no proxy com tempo-limite (a tela não pode travar) */
+async function consultarContatosFoco(query) {
     const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(query)}`;
 
     const controller = new AbortController();
-    // Timeout mais longo para evitar sensação de "travamento" em buscas por nome/telefone
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    // 60 s: a busca por telefone leva ~30 s no FOCO (campo sem índice)
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
         const resp = await fetch(url, { signal: controller.signal });
