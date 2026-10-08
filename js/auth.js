@@ -201,7 +201,7 @@ function usuarioPodeEditar() {
 async function buscarPerfilUsuario(userId) {
     const { data, error } = await supabaseClient
         .from('perfis_usuarios')
-        .select('id, email, nome_completo, role, ativo, ultimo_acesso, foto_url')
+        .select('id, email, nome_completo, role, ativo, ultimo_acesso, foto_url, senha_temporaria, gere_senhas')
         .eq('id', userId)
         .single();
 
@@ -245,6 +245,12 @@ async function verificarAutenticacao() {
     // Armazena o perfil globalmente para uso em outros scripts
     _perfilAtual = perfil;
 
+    // Senha temporária (definida pelo admin): troca obrigatória antes de usar
+    if (perfil?.senha_temporaria) mostrarTrocaSenhaObrigatoria(perfil);
+
+    // Gestor de senhas: contador de pedidos do "Esqueci minha senha" no menu
+    if (podeGerirSenhas()) void atualizarAvisoPedidosSenha();
+
     if (perfil) {
         void registrarUltimoAcessoThrottled();
         // O token foi aceito pelo servidor: libera nova tentativa de renovação no futuro
@@ -281,6 +287,146 @@ async function verificarAutenticacao() {
     } catch (_) { /* sessionStorage indisponível (modo privado restrito) */ }
 
     return session;
+}
+
+/**
+ * Gestor de senhas: redefine senhas, vê os pedidos do "Esqueci minha senha",
+ * vincula conta existente e concede/retira a função de outros admins.
+ * = o administrador principal (admin@sebrae.com.br) OU um administrador ativo
+ * com a marca gere_senhas (delegação, 08/10/2026). O banco aplica a mesma
+ * regra (pode_gerir_senhas()); aqui é só para a tela.
+ */
+const EMAIL_GESTOR_SENHAS = 'admin@sebrae.com.br';
+function ehAdminPrincipal(perfil) {
+    return (perfil?.email || '').toLowerCase() === EMAIL_GESTOR_SENHAS;
+}
+function podeGerirSenhas() {
+    return _perfilAtual?.role === 'admin' && _perfilAtual?.ativo === true
+        && (ehAdminPrincipal(_perfilAtual) || _perfilAtual?.gere_senhas === true);
+}
+
+/**
+ * Contador vermelho no botão do menu (⋮) e item "Pedidos de senha (N)" na
+ * seção Administração, em qualquer tela. Inserido por JS: não precisa mexer
+ * nas 6 páginas. Sem pedidos, some. Só o gestor lê a tabela (RLS).
+ */
+async function atualizarAvisoPedidosSenha() {
+    if (!podeGerirSenhas()) return;
+    const { count, error } = await supabaseClient
+        .from('solicitacoes_senha')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pendente');
+    if (error) { console.warn('Pedidos de senha:', error.message); return; }
+    const n = count || 0;
+
+    const btnMenu = document.querySelector('.btn-menu');
+    if (btnMenu) {
+        let badge = btnMenu.querySelector('.badge-pedidos-senha');
+        if (n > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'badge-pedidos-senha';
+                btnMenu.appendChild(badge);
+            }
+            badge.textContent = n > 9 ? '9+' : String(n);
+            btnMenu.title = `Menu — ${n} pedido(s) de redefinição de senha`;
+        } else if (badge) {
+            badge.remove();
+            btnMenu.title = 'Menu';
+        }
+    }
+
+    const secao = document.querySelector('.navbar-dropdown-section.link-usuarios');
+    if (secao) {
+        let item = secao.querySelector('.item-pedidos-senha');
+        if (n > 0) {
+            if (!item) {
+                item = document.createElement('a');
+                item.href = 'usuarios';
+                item.className = 'navbar-dropdown-item item-admin item-pedidos-senha';
+                secao.appendChild(item);
+            }
+            item.innerHTML = `<i class="fas fa-key"></i> Pedidos de senha <span class="badge-pedidos-senha-item">${n}</span>`;
+        } else if (item) {
+            item.remove();
+        }
+    }
+}
+
+/**
+ * Troca obrigatória da senha temporária (06/10/2026 — item 9 do SEBRAE).
+ * A senha definida pelo admin (redefinição ou usuário novo) só vale para o
+ * primeiro acesso: esta janela bloqueia a página até o usuário criar a dele.
+ * A validação é do servidor (RPC trocar_senha_temporaria: mínimo 8, diferente
+ * da temporária). Idempotente: a página de usuários verifica o login 2 vezes.
+ */
+function mostrarTrocaSenhaObrigatoria(perfil) {
+    if (document.getElementById('troca-senha-obrigatoria')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'troca-senha-obrigatoria';
+    overlay.className = 'troca-senha-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'troca-senha-titulo');
+    overlay.innerHTML = `
+        <form class="troca-senha-card" id="form-troca-senha" novalidate>
+            <div class="troca-senha-header">
+                <h3 id="troca-senha-titulo"><i class="fas fa-key"></i> Crie sua nova senha</h3>
+            </div>
+            <div class="troca-senha-body">
+                <p class="troca-senha-intro">
+                    Você entrou com uma <strong>senha temporária</strong> definida pelo administrador.
+                    Para continuar, crie a sua senha pessoal.
+                </p>
+                <div class="troca-senha-campo">
+                    <label for="troca-senha-nova">Nova senha <small>(mínimo 8 caracteres)</small></label>
+                    <input type="password" id="troca-senha-nova" autocomplete="new-password" minlength="8" required>
+                </div>
+                <div class="troca-senha-campo">
+                    <label for="troca-senha-confirmar">Confirmar nova senha</label>
+                    <input type="password" id="troca-senha-confirmar" autocomplete="new-password" minlength="8" required>
+                </div>
+                <div class="troca-senha-erro" id="troca-senha-erro" hidden></div>
+                <div class="troca-senha-acoes">
+                    <button type="button" class="troca-senha-sair" id="troca-senha-sair">
+                        <i class="fas fa-sign-out-alt"></i> Sair
+                    </button>
+                    <button type="submit" class="troca-senha-salvar" id="troca-senha-salvar">
+                        <i class="fas fa-check"></i> Salvar nova senha
+                    </button>
+                </div>
+            </div>
+        </form>`;
+    document.body.appendChild(overlay);
+    document.body.classList.add('troca-senha-ativa');
+
+    const erro = overlay.querySelector('#troca-senha-erro');
+    const mostrarErro = msg => { erro.textContent = msg; erro.hidden = !msg; };
+
+    overlay.querySelector('#troca-senha-sair').addEventListener('click', () => fazerLogout());
+    overlay.querySelector('#form-troca-senha').addEventListener('submit', async e => {
+        e.preventDefault();
+        const nova = overlay.querySelector('#troca-senha-nova').value;
+        const confirmar = overlay.querySelector('#troca-senha-confirmar').value;
+        if (nova.length < 8) return mostrarErro('A nova senha deve ter no mínimo 8 caracteres.');
+        if (nova !== confirmar) return mostrarErro('A confirmação não confere com a nova senha.');
+
+        const btn = overlay.querySelector('#troca-senha-salvar');
+        btn.disabled = true;
+        mostrarErro('');
+        const { error } = await supabaseClient.rpc('trocar_senha_temporaria', { p_nova_senha: nova });
+        btn.disabled = false;
+        if (error) return mostrarErro(error.message || 'Não foi possível salvar a nova senha. Tente novamente.');
+
+        if (perfil) perfil.senha_temporaria = false;
+        overlay.remove();
+        document.body.classList.remove('troca-senha-ativa');
+    });
+
+    // A janela não fecha por Esc nem por clique fora: é obrigatória
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') e.stopPropagation(); }, true);
+    setTimeout(() => overlay.querySelector('#troca-senha-nova')?.focus(), 50);
 }
 
 /**

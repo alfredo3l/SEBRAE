@@ -404,12 +404,15 @@
             </div>
         </div>
 
+        <!-- Solicitações do "Esqueci minha senha" (tela de login) -->
+        <div class="solicitacoes-senha" id="solicitacoes-senha" hidden></div>
+
         <!-- Filtros -->
         <div class="filter-card">
             <div class="filter-row">
                 <div class="filter-group" style="flex: 2;">
                     <label><i class="fas fa-search"></i> Pesquisar</label>
-                    <input type="text" id="filtro-pesquisa" placeholder="Nome ou e-mail..." oninput="filtrarUsuarios()">
+                    <input type="text" id="filtro-pesquisa" placeholder="Nome, e-mail ou telefone..." oninput="filtrarUsuarios()">
                 </div>
                 <div class="filter-group">
                     <label><i class="fas fa-shield-alt"></i> Perfil</label>
@@ -438,6 +441,7 @@
                     <tr>
                         <th>Nome Completo</th>
                         <th>E-mail</th>
+                        <th>WhatsApp</th>
                         <th>Perfil</th>
                         <th>Último Acesso</th>
                         <th>Criado em</th>
@@ -489,16 +493,52 @@
                         <input type="email" id="usr-email" placeholder="email@sebrae.com.br" required maxlength="120">
                     </div>
 
+                    <div class="campo-form">
+                        <label for="usr-whatsapp"><i class="fab fa-whatsapp"></i> Telefone com WhatsApp
+                            <small style="color:#6b7280; font-weight:400;">(opcional — usado para avisos do sistema)</small>
+                        </label>
+                        <input type="tel" id="usr-whatsapp" placeholder="(67)99999-9999" maxlength="14" inputmode="tel" autocomplete="off" oninput="mascaraTelefone(this)">
+                    </div>
+
                     <div class="campo-form" id="campo-senha">
                         <label><i class="fas fa-lock"></i> Senha <span style="color:#dc2626" id="senha-obrigatorio">*</span>
-                            <small style="color:#6b7280; font-weight:400;" id="senha-hint">(mínimo 8 caracteres)</small>
+                            <small style="color:#6b7280; font-weight:400;" id="senha-hint">(mínimo 8 caracteres — temporária: o usuário cria a própria no 1º acesso)</small>
                         </label>
                         <input type="password" id="usr-senha" placeholder="Digite a senha" minlength="8">
                     </div>
                     <div class="campo-form" id="campo-senha-bloqueada" style="display:none;">
                         <label><i class="fas fa-lock"></i> Senha</label>
-                        <div style="background:#f9fafb; border:1px dashed #d1d5db; color:#6b7280; padding:10px 12px; border-radius:8px; font-size:0.85rem;">
-                            A senha não pode ser alterada por este modal. Para o próprio acesso, o usuário deve usar o “Meu Perfil”.
+                        <!-- Redefinição pelo admin (RPC admin_redefinir_senha): senha temporária,
+                             troca obrigatória no 1º acesso. Não vale para a própria conta. -->
+                        <div class="redefinir-senha-box" id="redefinir-senha-box">
+                            <p class="redefinir-senha-texto" id="redefinir-senha-texto">
+                                Defina uma <strong>senha temporária</strong>. No próximo acesso o usuário
+                                será obrigado a criar a própria senha, e as sessões abertas dele serão encerradas.
+                            </p>
+                            <p class="redefinir-senha-compartilhada" id="redefinir-senha-compartilhada" hidden>
+                                <i class="fas fa-triangle-exclamation"></i>
+                                Esta conta também acessa <strong>outro sistema</strong> que usa o mesmo login:
+                                a nova senha valerá <strong>para os dois</strong>.
+                            </p>
+                            <button type="button" class="btn-redefinir-senha" id="btn-abrir-redefinir" onclick="abrirRedefinirSenha()">
+                                <i class="fas fa-key"></i> Redefinir senha
+                            </button>
+                            <div class="redefinir-senha-campos" id="redefinir-senha-campos" hidden>
+                                <input type="password" id="usr-senha-temp" placeholder="Senha temporária (mínimo 8 caracteres)" minlength="8" autocomplete="new-password">
+                                <input type="password" id="usr-senha-temp-conf" placeholder="Confirmar senha temporária" minlength="8" autocomplete="new-password">
+                                <div class="redefinir-senha-botoes">
+                                    <button type="button" class="btn-cancelar-modal" onclick="cancelarRedefinirSenha()">Cancelar</button>
+                                    <button type="button" class="btn-salvar-modal" id="btn-confirmar-redefinir" onclick="confirmarRedefinirSenha()">
+                                        <i class="fas fa-key"></i> Confirmar redefinição
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="redefinir-senha-propria" id="redefinir-senha-restrita" hidden>
+                            A redefinição de senha é feita pelos gestores de senhas.
+                        </div>
+                        <div class="redefinir-senha-propria" id="redefinir-senha-propria" hidden>
+                            Para alterar a sua própria senha, use o “Meu Perfil”.
                         </div>
                     </div>
 
@@ -509,6 +549,15 @@
                             <option value="operador">Operador — pode cadastrar e editar parceiros</option>
                             <option value="admin">Administrador — acesso total</option>
                         </select>
+                    </div>
+
+                    <!-- Delegação da função de cuidar de senhas (só gestores veem; só admins recebem) -->
+                    <div class="campo-form campo-gestor-senhas" id="campo-gestor-senhas" hidden>
+                        <label class="gestor-senhas-opcao">
+                            <input type="checkbox" id="usr-gestor-senhas">
+                            <span><i class="fas fa-key"></i> Pode cuidar de senhas</span>
+                        </label>
+                        <small>Redefinir senhas, atender o "Esqueci minha senha" e conceder esta função a outros administradores.</small>
                     </div>
 
                     <div class="campo-form" id="campo-ativo" style="display:none;">
@@ -577,6 +626,19 @@
                         <span id="perfil-role-display">—</span>
                     </div>
                 </div>
+                <div class="perfil-info-row perfil-whatsapp-row" id="perfil-whatsapp-row" style="margin-top: 14px;">
+                    <div class="perfil-info-item" style="width:100%;">
+                        <label for="perfil-whatsapp"><i class="fab fa-whatsapp"></i> Telefone com WhatsApp</label>
+                        <form id="form-whatsapp-perfil" onsubmit="salvarWhatsAppPerfil(event)">
+                            <input type="tel" id="perfil-whatsapp" placeholder="(67)99999-9999" maxlength="14" inputmode="tel" autocomplete="tel" oninput="mascaraTelefone(this)" style="margin-top: 8px; width: 100%;">
+                            <small class="perfil-whatsapp-dica">Número usado para avisos do sistema pelo WhatsApp. Deixe em branco para remover.</small>
+                            <button type="submit" id="btn-perfil-salvar-whatsapp" class="btn-salvar" style="margin-top: 10px; width: 100%;">
+                                <span class="btn-text"><i class="fab fa-whatsapp"></i> Salvar telefone</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
                 <div class="perfil-info-row" style="margin-top: 14px;">
                     <div class="perfil-info-item" style="width:100%;">
                         <label><i class="fas fa-key"></i> Alterar senha</label>
@@ -625,10 +687,10 @@
     <!-- Supabase JS (CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Supabase Config -->
-    <script src="js/ambiente-banner.js"></script> <!-- FAIXA DE AMBIENTE (homologação/produção) — REMOVER após validação do SEBRAE -->
     <script src="js/supabase-config.js"></script>
     <!-- Datas sempre no fuso do atendimento (MS) -->
     <script src="js/datas.js"></script>
+    <script src="js/telefone.js"></script>
     <!-- Autenticação -->
     <script src="js/auth.js"></script>
     <!-- Foto de Perfil -->

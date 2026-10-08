@@ -20,7 +20,7 @@ function atualizarNavbarAvatar(fotoUrl, bustCache = false) {
     img.id        = 'navbar-avatar-wrap';
     img.className = 'navbar-avatar';
     img.alt       = 'Avatar';
-    img.src       = bustCache ? fotoUrl + '?t=' + Date.now() : fotoUrl;
+    img.src       = bustCache ? fotoUrl + (fotoUrl.includes('?') ? '&' : '?') + 't=' + Date.now() : fotoUrl;
 
     img.addEventListener('error', function () {
         const placeholder = document.createElement('div');
@@ -42,16 +42,13 @@ async function abrirModalPerfil(userId) {
 
     esconderAlertaPerfil();
 
-    let uid = userId;
-    if (!uid) {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (!session) return;
-        uid = session.user.id;
-    }
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!userId && !session) return;
+    const uid = userId || session.user.id;
 
     const { data: perfil } = await supabaseClient
         .from('perfis_usuarios')
-        .select('id, email, nome_completo, role, ativo, ultimo_acesso, foto_url')
+        .select('id, email, nome_completo, role, ativo, ultimo_acesso, foto_url, whatsapp')
         .eq('id', uid)
         .single();
 
@@ -73,6 +70,18 @@ async function abrirModalPerfil(userId) {
 
     // Foto
     preencherFotoModal(perfil.foto_url);
+
+    // WhatsApp: só no próprio perfil (o admin abre o perfil de outro usuário pela
+    // câmera da Gestão de Usuários, só para a foto; o número de terceiros é
+    // editado no "Editar Usuário")
+    const linhaWhats = document.getElementById('perfil-whatsapp-row');
+    const campoWhats = document.getElementById('perfil-whatsapp');
+    if (linhaWhats && campoWhats) {
+        const proprio = !!session && session.user.id === uid;
+        linhaWhats.hidden = !proprio;
+        campoWhats.value = perfil.whatsapp || '';
+        campoWhats.dataset.salvo = perfil.whatsapp || '';
+    }
 
     modal.style.display = 'flex';
 }
@@ -167,6 +176,75 @@ async function alterarSenhaPerfil(event) {
     }
 }
 
+// ============================================================
+// TELEFONE COM WHATSAPP (usuário logado — 08/10/2026)
+// ============================================================
+// Grava pela RPC atualizar_meu_whatsapp (a policy de UPDATE da tabela é só de
+// admin). Antes confere na Evolution se o número tem WhatsApp: sem WhatsApp não
+// salva; serviço fora do ar salva com aviso (decisão do desenvolvedor).
+function _setLoadingWhatsAppPerfil(loading) {
+    const btn = document.getElementById('btn-perfil-salvar-whatsapp');
+    if (!btn) return;
+    const spinner = btn.querySelector('.spinner');
+    const text = btn.querySelector('.btn-text');
+    btn.disabled = !!loading;
+    if (spinner) spinner.style.display = loading ? '' : 'none';
+    if (text) text.style.display = loading ? 'none' : '';
+}
+
+async function salvarWhatsAppPerfil(event) {
+    if (event) event.preventDefault();
+    const campo = document.getElementById('perfil-whatsapp');
+    if (!campo) return;
+    esconderAlertaPerfil();
+
+    const digitos = digitosTelefone(campo.value);
+    if (digitos && !telefoneValido(digitos)) {
+        mostrarAlertaPerfil('Telefone incompleto: informe o DDD e o número (10 ou 11 dígitos).', 'erro');
+        campo.focus();
+        return;
+    }
+    if (digitos === digitosTelefone(campo.dataset.salvo)) {
+        mostrarAlertaPerfil(digitos ? 'Este já é o seu telefone cadastrado.' : 'Nenhum telefone cadastrado.', 'sucesso');
+        return;
+    }
+
+    _setLoadingWhatsAppPerfil(true);
+    try {
+        let jid = null;
+        let aviso = '';
+        if (digitos) {
+            const v = await verificarWhatsApp(formatarTelefoneParaCadastro(digitos));
+            if (v.exists === false) {
+                mostrarAlertaPerfil('Este número não tem WhatsApp. Confira o DDD e o número.', 'erro');
+                campo.focus();
+                return;
+            }
+            if (v.exists === true) jid = v.whatsapp || null;
+            else aviso = ' Não foi possível confirmar agora se o número tem WhatsApp.';
+        }
+
+        const { data, error } = await supabaseClient.rpc('atualizar_meu_whatsapp', {
+            p_whatsapp: digitos, p_jid: jid
+        });
+        if (error) throw error;
+
+        campo.value = data || '';
+        campo.dataset.salvo = data || '';
+        mostrarAlertaPerfil(
+            (data ? 'Telefone com WhatsApp salvo.' : 'Telefone removido.') + aviso,
+            'sucesso');
+    } catch (err) {
+        console.error('Erro ao salvar WhatsApp:', err);
+        if (typeof tratarErroDeSessao === 'function' && tratarErroDeSessao(err)) return;
+        mostrarAlertaPerfil(/inválido/i.test(err?.message || '')
+            ? err.message
+            : 'Erro ao salvar o telefone. Tente novamente.', 'erro');
+    } finally {
+        _setLoadingWhatsAppPerfil(false);
+    }
+}
+
 // Fecha ao clicar fora
 document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('modal-perfil');
@@ -241,7 +319,9 @@ async function uploadFotoPerfil(input) {
             .from(AVATAR_BUCKET)
             .getPublicUrl(caminho);
 
-        const fotoUrl = urlData.publicUrl;
+        // "?v=" muda a URL a cada upload (o arquivo é sobrescrito no mesmo
+        // caminho): quem já tinha a foto antiga em cache recebe a nova
+        const fotoUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
         mostrarProgressoPerfil(85);
 

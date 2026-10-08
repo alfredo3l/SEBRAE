@@ -111,18 +111,27 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Rota da API SEBRAE - Query
-    if (urlObj.pathname === '/api/sebrae/query') {
+    // Rota da API SEBRAE - Query (SOQL) e Search (SOSL, só "FIND ...")
+    // (mesma lógica de api/sebrae/query.js e api/sebrae/search.js — replicar mudanças)
+    if (urlObj.pathname === '/api/sebrae/query' || urlObj.pathname === '/api/sebrae/search') {
+        const ehBusca = urlObj.pathname === '/api/sebrae/search';
         const q = urlObj.searchParams.get('q');
         if (!q) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Parâmetro "q" é obrigatório.' }));
             return;
         }
+        if (ehBusca && !/^\s*FIND\s/i.test(q)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Somente buscas SOSL (FIND ...) são aceitas nesta rota.' }));
+            return;
+        }
 
         try {
             const token    = await obterToken();
-            const queryUrl = `${SEBRAE_API_BASE}/services/data/v64.0/query?q=${encodeURIComponent(q)}`;
+            const queryUrl = ehBusca
+                ? `${SEBRAE_API_BASE}/services/data/v64.0/search/?q=${encodeURIComponent(q)}`
+                : `${SEBRAE_API_BASE}/services/data/v64.0/query?q=${encodeURIComponent(q)}`;
             const sfResp   = await fetch(queryUrl, {
                 headers: { Authorization: `Bearer ${token}` },
             });

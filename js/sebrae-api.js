@@ -31,6 +31,8 @@ function pareceCPF(termo) {
     const nums = t.replace(/\D/g, '');
     if (nums.length !== 11) return false;
     if (/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(t)) return true;
+    // Pontuação de CPF fora do padrão ("009.852.91109"): ponto = CPF, não telefone
+    if (/^[\d.\-\s]+$/.test(t) && t.includes('.')) return true;
     return /^\d{11}$/.test(t) && cpfDigitosValidos(nums);
 }
 
@@ -46,6 +48,61 @@ function cpfDigitosValidos(nums) {
 }
 
 /**
+ * Detecta se o termo digitado parece um CNPJ: 14 dígitos, com ou sem a máscara
+ * 00.000.000/0000-00. Não há ambiguidade com telefone (com DDI 55 um celular
+ * chega a 13 dígitos) — por isso, diferente do CPF, não exige dígito
+ * verificador: CNPJ digitado errado volta vazio na hora, em vez de cair na
+ * busca por telefone (~30 s).
+ */
+function pareceCNPJ(termo) {
+    const t = String(termo).trim();
+    if (/[()+]/.test(t)) return false;
+    return /^[\d.\/\-\s]+$/.test(t) && t.replace(/\D/g, '').length === 14;
+}
+
+/** Formata CNPJ para o padrão 00.000.000/0000-00 (como o FOCO grava) */
+function formatarCNPJSebrae(valor) {
+    const nums = String(valor).replace(/\D/g, '');
+    return nums.length === 14
+        ? nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+        : valor;
+}
+
+/**
+ * Número incompleto (06/10/2026): antes de consultar o FOCO, um termo só com
+ * dígitos e pontuação precisa ser um número COMPLETO — decisão do
+ * desenvolvedor: CPF (11 dígitos), CNPJ (14) ou telefone COM DDD (10 ou 11;
+ * 12–13 com o DDI 55). Antes, "009.85" caía na busca por nome no FOCO (15–40 s)
+ * e "67992451" na busca por telefone (~30 s), sem achar o que se queria.
+ * Devolve a mensagem para o usuário, ou null se o termo é buscável.
+ */
+function avisoNumeroIncompleto(termo) {
+    const t = String(termo || '').trim();
+    if (!/^[\d.\-\/\s()+]+$/.test(t)) return null;      // tem letra: é nome, segue o fluxo normal
+    const d = t.replace(/\D/g, '');
+    const n = d.length;
+    if (n === 0) return null;
+    const formatoDocumento = /[.\/]/.test(t);             // pontos/barra = CPF ou CNPJ
+    const formatoTelefone = /[()+]/.test(t);               // parênteses/+ = telefone
+
+    if (formatoDocumento) {
+        if (n === 11 || n === 14) return null;
+        if (n < 11) return `CPF incompleto: você digitou ${n} de 11 dígitos. Complete o CPF (ou o CNPJ, com 14 dígitos) para buscar no FOCO.`;
+        if (n < 14) return `CNPJ incompleto: você digitou ${n} de 14 dígitos. Complete o CNPJ para buscar no FOCO.`;
+        return `Número com dígitos a mais (${n}). Confira o CPF (11 dígitos) ou o CNPJ (14 dígitos).`;
+    }
+
+    if (n === 10 || n === 11) return null;                  // telefone com DDD (ou CPF só com dígitos)
+    if (!formatoTelefone && n === 14) return null;          // CNPJ só com dígitos
+    if ((n === 12 || n === 13) && d.startsWith('55')) return null;   // telefone com DDI 55
+
+    if (formatoTelefone) {
+        return `Telefone incompleto: você digitou ${n} dígitos. Digite o telefone com DDD (10 ou 11 dígitos) para buscar no FOCO.`;
+    }
+    return `Número incompleto: você digitou ${n} dígitos. Digite o CPF (11 dígitos), o CNPJ (14) ou o telefone com DDD (10 ou 11) para buscar no FOCO.`;
+}
+
+/**
  * Detecta se o termo digitado parece um telefone.
  */
 function pareceTelefone(termo) {
@@ -56,6 +113,7 @@ function pareceTelefone(termo) {
 /**
  * Busca contatos na API SEBRAE/Salesforce via proxy local.
  * - Se parece CPF  → busca exata por CPF__c
+ * - Se parece CNPJ → contatos da conta (Account.CNPJ__c — o CNPJ vive na conta)
  * - Se parece tel  → busca por Phone / MobilePhone
  * - Caso contrário → busca por Name (LIKE)
  *
@@ -69,11 +127,27 @@ async function buscarContatosSebrae(termo) {
         return consultarContatosFoco(`SELECT FIELDS(ALL) FROM Contact WHERE CPF__c = '${cpfFormatado}' LIMIT 200`);
     }
 
+    if (pareceCNPJ(termo)) {
+        // Campo indexado no FOCO (~0,6 s, medido em 06/10/2026). Grava com
+        // máscara; os dígitos corridos cobrem cadastro gravado sem ela.
+        const digitos = termo.replace(/\D/g, '');
+        return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE Account.CNPJ__c IN ('${formatarCNPJSebrae(digitos)}', '${digitos}') LIMIT 200`);
+    }
+
     if (pareceTelefone(termo)) {
-        // Telefone não tem índice no FOCO: a busca leva ~30 s (medido em 01/10/2026)
-        const padroes = padroesTelefoneFoco(termo);
-        const where = padroes.map(p => `Phone LIKE '${p}' OR MobilePhone LIKE '${p}'`).join(' OR ');
-        return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE ${where} LIMIT 50`);
+        // Telefone via SOSL (06/10/2026): usa o índice de pesquisa do FOCO
+        // (< 0,5 s, medido em produção e homologação). Por SOQL LIKE o campo não
+        // tem índice e levava ~30 s — fica só como reserva se a SOSL falhar
+        // (ex.: gateway deixar de expor /search).
+        try {
+            return await buscarTelefoneFocoSOSL(termo);
+        } catch (err) {
+            if (/demorou mais que o normal/.test(err.message)) throw err;
+            console.warn('Busca SOSL de telefone falhou; usando a SOQL (lenta):', err.message);
+            const padroes = padroesTelefoneFoco(termo);
+            const where = padroes.map(p => `Phone LIKE '${p}' OR MobilePhone LIKE '${p}'`).join(' OR ');
+            return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE ${where} LIMIT 50`);
+        }
     }
 
     // Nome: primeiro "começa com", que usa o índice do FOCO (~0,5 s); só se não
@@ -83,6 +157,21 @@ async function buscarContatosSebrae(termo) {
     const porInicio = await consultarContatosFoco(`SELECT FIELDS(ALL) FROM Contact WHERE Name LIKE '${nome}%' LIMIT 50`);
     if ((porInicio.records || []).length) return porInicio;
     return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE Name LIKE '%${nome}%' LIMIT 50`);
+}
+
+/**
+ * Telefone pela busca textual do Salesforce (SOSL, rota /api/sebrae/search):
+ * "FIND {67992451961*} IN PHONE FIELDS" casa pelo início de cada parte do
+ * número — com ou sem DDD, com ou sem máscara. Devolve no mesmo formato da
+ * SOQL ({ records }) para o resto da tela não mudar.
+ */
+async function buscarTelefoneFocoSOSL(termo) {
+    let d = String(termo).replace(/\D/g, '');
+    if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2); // DDI
+    if (!d) return { records: [] };
+    const sosl = `FIND {${d}*} IN PHONE FIELDS RETURNING Contact(${CAMPOS_BUSCA_CONTATO}) LIMIT 50`;
+    const body = await consultarContatosFoco(sosl, 'search');
+    return { records: body.searchRecords || [] };
 }
 
 /** Campos que a lista de resultados da busca usa (ver mapearContatoParaTabela) */
@@ -114,8 +203,9 @@ function padroesTelefoneFoco(termo) {
 }
 
 /** Executa um SOQL de Contact no proxy com tempo-limite (a tela não pode travar) */
-async function consultarContatosFoco(query) {
-    const url = `${SEBRAE_PROXY}/api/sebrae/query?q=${encodeURIComponent(query)}`;
+async function consultarContatosFoco(query, rota = 'query') {
+    // rota: 'query' (SOQL) ou 'search' (SOSL — só "FIND ...")
+    const url = `${SEBRAE_PROXY}/api/sebrae/${rota}?q=${encodeURIComponent(query)}`;
 
     const controller = new AbortController();
     // 60 s: a busca por telefone leva ~30 s no FOCO (campo sem índice)

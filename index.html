@@ -80,13 +80,13 @@
         <div class="filter-card">
             <div class="filter-row">
                 <div class="filter-group" style="flex: 2;">
-                    <label><i class="fas fa-search"></i> Pesquisar</label>
+                    <label for="filtro-pesquisa"><i class="fas fa-search"></i> <span id="rotulo-pesquisa">Pesquisar</span></label>
                     <input type="text" id="filtro-pesquisa" placeholder="Nome, CPF, Account ID ou Telefone">
                 </div>
                 <div class="filter-group">
                     <label><i class="fas fa-bookmark"></i> Status do Termo</label>
-                    <select id="filtro-status">
-                        <option value="">Todos</option>
+                    <!-- multiple + hidden: o componente (js/multi-filtro.js) desenha o campo -->
+                    <select id="filtro-status" multiple hidden>
                         <option value="gerado">Gerado</option>
                         <option value="enviado">Enviado</option>
                         <option value="aceito">Aceito</option>
@@ -95,12 +95,18 @@
                 </div>
                 <div class="filter-group">
                     <label><i class="fas fa-file-alt"></i> Tipo de Documento</label>
-                    <select id="filtro-tipo">
-                        <option value="">Todos</option>
+                    <select id="filtro-tipo" multiple hidden>
                         <!-- Demais opções montadas pelo catálogo TERMOS_URC (js) -->
                     </select>
                 </div>
-                <button class="btn-filtrar" onclick="filtrarParceiros()">
+                <!-- Só para administrador: nasce oculto e é exibido por aplicarPermissoesLista() -->
+                <div class="filter-group filter-group-usuario" id="grupo-filtro-usuario" hidden>
+                    <label><i class="fas fa-user"></i> Usuário</label>
+                    <select id="filtro-usuario" multiple hidden>
+                        <!-- Operadores e administradores montados por popularFiltroUsuario() (js) -->
+                    </select>
+                </div>
+                <button class="btn-filtrar" onclick="confirmarPesquisaLista()">
                     <i class="fas fa-filter"></i>
                     Filtrar
                 </button>
@@ -142,6 +148,7 @@
                         <th>Data Envio</th>
                         <th>Data Aceite</th>
                         <th>FOCO</th>
+                        <th title="Usuário que gerou o termo">Criado por</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -260,6 +267,36 @@
         </div>
     </div>
 
+    <!-- ========== MODAL PESQUISA LIMITADA AO DIA (só operador) ========== -->
+    <div class="modal-overlay" id="modal-pesquisa-dia" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-pesquisa-dia-titulo">
+        <div class="modal-cadastro-card" style="max-width: 520px;">
+            <div class="modal-cadastro-header">
+                <h3 id="modal-pesquisa-dia-titulo"><i class="fas fa-circle-info"></i> Pesquisa limitada aos termos de hoje</h3>
+                <button class="modal-close-btn" type="button" onclick="fecharModalPesquisaDia()" title="Fechar">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-cadastro-body">
+                <p class="pesquisa-dia-texto">
+                    A pesquisa da tela inicial mostra <strong>apenas os termos gerados por você hoje</strong>.
+                </p>
+                <p class="pesquisa-dia-texto">
+                    O cliente pesquisado (<strong id="modal-pesquisa-dia-termo"></strong>) possui termos registrados
+                    em outros dias ou em outros atendimentos. Para consultá-los, use <strong>Buscar Cliente</strong>
+                    e, em seguida, abra o <strong>Acompanhamento</strong> do cliente.
+                </p>
+                <div class="modal-form-actions">
+                    <button type="button" class="btn-cancelar" onclick="fecharModalPesquisaDia()">
+                        <i class="fas fa-times"></i> Fechar
+                    </button>
+                    <button type="button" class="btn-salvar" id="btn-pesquisa-dia-buscar" onclick="abrirBuscaComPesquisa()">
+                        <i class="fas fa-search"></i> Abrir Buscar Cliente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ========== MODAL BUSCAR PARCEIRO ========== -->
     <div class="modal-overlay" id="modal-busca" style="display: none;">
         <div class="modal-busca-card">
@@ -278,20 +315,24 @@
                 <div class="busca-filtro-painel">
                     <div class="busca-filtro-titulo">
                         <i class="fas fa-filter"></i>
-                        Nome, CPF ou Telefone
+                        Nome, CPF, CNPJ ou Telefone
                     </div>
                     <div class="busca-filtro-conteudo">
-                        <label class="busca-label">Nome, CPF ou Telefone</label>
+                        <label class="busca-label">Nome, CPF, CNPJ ou Telefone</label>
                         <div class="busca-input-row">
                             <input
                                 type="text"
                                 id="busca-termo"
                                 class="busca-input"
-                                placeholder="Digite parte do nome, CPF ou telefone"
+                                placeholder="Digite parte do nome, CPF, CNPJ ou telefone"
                                 onkeypress="buscarParceiroEnter(event)"
+                                oninput="atualizarBotaoLimparBusca()"
                             >
                             <button class="btn-buscar-modal" onclick="executarBuscaParceiro()">
                                 <i class="fas fa-search"></i> Buscar
+                            </button>
+                            <button type="button" id="btn-limpar-busca" class="btn-limpar-filtros" onclick="limparBuscaParceiro()" title="Limpar a busca e os resultados" disabled>
+                                <i class="fas fa-eraser"></i> Limpar
                             </button>
                         </div>
                     </div>
@@ -392,6 +433,19 @@
                         <span id="perfil-role-display">—</span>
                     </div>
                 </div>
+                <div class="perfil-info-row perfil-whatsapp-row" id="perfil-whatsapp-row" style="margin-top: 14px;">
+                    <div class="perfil-info-item" style="width:100%;">
+                        <label for="perfil-whatsapp"><i class="fab fa-whatsapp"></i> Telefone com WhatsApp</label>
+                        <form id="form-whatsapp-perfil" onsubmit="salvarWhatsAppPerfil(event)">
+                            <input type="tel" id="perfil-whatsapp" placeholder="(67)99999-9999" maxlength="14" inputmode="tel" autocomplete="tel" oninput="mascaraTelefone(this)" style="margin-top: 8px; width: 100%;">
+                            <small class="perfil-whatsapp-dica">Número usado para avisos do sistema pelo WhatsApp. Deixe em branco para remover.</small>
+                            <button type="submit" id="btn-perfil-salvar-whatsapp" class="btn-salvar" style="margin-top: 10px; width: 100%;">
+                                <span class="btn-text"><i class="fab fa-whatsapp"></i> Salvar telefone</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
                 <div class="perfil-info-row" style="margin-top: 14px;">
                     <div class="perfil-info-item" style="width:100%;">
                         <label><i class="fas fa-key"></i> Alterar senha</label>
@@ -420,10 +474,10 @@
     <!-- Supabase JS (CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Supabase Config -->
-    <script src="js/ambiente-banner.js"></script> <!-- FAIXA DE AMBIENTE (homologação/produção) — REMOVER após validação do SEBRAE -->
     <script src="js/supabase-config.js"></script>
     <!-- Datas sempre no fuso do atendimento (MS) -->
     <script src="js/datas.js"></script>
+    <script src="js/telefone.js"></script>
     <!-- Autenticação -->
     <script src="js/auth.js"></script>
     <!-- Foto de Perfil -->
@@ -431,6 +485,7 @@
     <!-- API SEBRAE / Salesforce -->
     <script src="js/sebrae-api.js"></script>
     <!-- JS Customizado -->
+    <script src="js/multi-filtro.js"></script>
     <script src="js/app.js"></script>
     <!-- Catálogo dos Termos URC (dropdown de tipo de documento) -->
     <script src="js/documentos.js"></script>

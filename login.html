@@ -217,6 +217,41 @@
             color: rgba(255, 255, 255, 0.5);
             font-size: 0.75rem;
         }
+
+        /* "Esqueci minha senha" (06/10/2026 — item 10 do SEBRAE) */
+        [hidden] {
+            display: none !important;   /* .btn-login/.form-group definem display */
+        }
+
+        .link-esqueci {
+            display: block;
+            margin: 14px auto 0;
+            border: none;
+            background: none;
+            color: #0056a6;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .esqueci-senha p {
+            font-size: 0.88rem;
+            color: #4b5563;
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
+
+        .esqueci-ok {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
     </style>
 </head>
 <body class="login-page">
@@ -226,7 +261,7 @@
         <div class="login-logo">
             <img src="img/Logo_Sebrae_Branco.png" alt="SEBRAE">
             <h1>TERMOS URC</h1>
-            <p>Sistema de Gestão de Termos LGPD</p>
+            <p>Sistema de Gestão de Aceites de Termos</p>
         </div>
 
         <!-- Card de Login -->
@@ -285,6 +320,43 @@
                     </span>
                     <span class="spinner"></span>
                 </button>
+                <button type="button" class="link-esqueci" onclick="mostrarEsqueciSenha(true)">
+                    Esqueci minha senha
+                </button>
+            </form>
+
+            <!-- Esqueci minha senha: sem e-mail automático — registra a solicitação e
+                 os administradores definem uma senha temporária (RPC solicitar_redefinicao_senha).
+                 Confere o e-mail (08/10/2026): recusa não cadastrado/inativo e avisa pedido já pendente. -->
+            <form class="login-form esqueci-senha" id="esqueci-form" onsubmit="enviarEsqueciSenha(event)" hidden>
+                <p>
+                    Informe o e-mail de acesso. Os administradores do sistema serão avisados e
+                    entrarão em contato com uma <strong>senha temporária</strong>; no primeiro acesso
+                    você criará a sua senha pessoal.
+                </p>
+                <div class="esqueci-ok" id="esqueci-ok" hidden>
+                    <i class="fas fa-check-circle"></i>
+                    <span id="esqueci-ok-msg">Solicitação registrada. Os administradores foram avisados
+                    e entrarão em contato com uma senha temporária.</span>
+                </div>
+                <div class="form-group" id="esqueci-campo">
+                    <label for="esqueci-email">
+                        <i class="fas fa-envelope"></i> E-mail
+                    </label>
+                    <div class="input-group">
+                        <i class="fas fa-envelope input-icon"></i>
+                        <input type="email" id="esqueci-email" placeholder="Digite seu e-mail" required autocomplete="email">
+                    </div>
+                </div>
+                <button type="submit" class="btn-login" id="btn-esqueci">
+                    <span class="btn-text">
+                        <i class="fas fa-paper-plane"></i> Enviar solicitação
+                    </span>
+                    <span class="spinner"></span>
+                </button>
+                <button type="button" class="link-esqueci" onclick="mostrarEsqueciSenha(false)">
+                    Voltar ao login
+                </button>
             </form>
         </div>
 
@@ -297,7 +369,6 @@
     <!-- Supabase JS (CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Supabase Config -->
-    <script src="js/ambiente-banner.js"></script> <!-- FAIXA DE AMBIENTE (homologação/produção) — REMOVER após validação do SEBRAE -->
     <script src="js/supabase-config.js"></script>
 
     <script>
@@ -353,6 +424,65 @@
                 : 'Sua sessão expirou. Entre novamente para continuar.';
             div.classList.add('show');
         })();
+
+        // "Esqueci minha senha": alterna entre o login e o painel de solicitação
+        function mostrarEsqueciSenha(mostrar) {
+            document.getElementById('login-form').hidden = mostrar;
+            document.getElementById('esqueci-form').hidden = !mostrar;
+            document.getElementById('login-error').classList.remove('show');
+            if (mostrar) {
+                document.getElementById('esqueci-ok').hidden = true;
+                document.getElementById('esqueci-campo').hidden = false;
+                document.getElementById('btn-esqueci').hidden = false;
+                const email = document.getElementById('email').value.trim();
+                const campo = document.getElementById('esqueci-email');
+                if (email && !campo.value) campo.value = email;
+                campo.focus();
+            } else {
+                document.getElementById('email').focus();
+            }
+        }
+
+        async function enviarEsqueciSenha(event) {
+            event.preventDefault();
+            const email = document.getElementById('esqueci-email').value.trim();
+            const btn = document.getElementById('btn-esqueci');
+            if (!email) return;
+
+            btn.classList.add('loading');
+            btn.disabled = true;
+            try {
+                const { data: resultado, error } = await supabaseClient.rpc('solicitar_redefinicao_senha', { p_email: email });
+                if (error) throw error;
+                const recusas = {
+                    nao_cadastrado: 'Este e-mail não está cadastrado no sistema. Confira o endereço digitado ou procure um administrador.',
+                    inativo: 'Este usuário está inativo. Procure um administrador do sistema.',
+                    invalido: 'Informe um e-mail válido.'
+                };
+                if (recusas[resultado]) {
+                    const div = document.getElementById('login-error');
+                    document.getElementById('login-error-msg').textContent = recusas[resultado];
+                    div.classList.add('show');
+                    document.getElementById('esqueci-email').focus();
+                    return;
+                }
+                document.getElementById('esqueci-ok-msg').textContent = resultado === 'pendente'
+                    ? 'Já existe uma solicitação pendente para este e-mail. Os administradores entrarão em contato com uma senha temporária.'
+                    : 'Solicitação registrada. Os administradores foram avisados e entrarão em contato com uma senha temporária.';
+                document.getElementById('login-error').classList.remove('show');
+                document.getElementById('esqueci-ok').hidden = false;
+                document.getElementById('esqueci-campo').hidden = true;
+                btn.hidden = true;
+            } catch (e) {
+                const div = document.getElementById('login-error');
+                document.getElementById('login-error-msg').textContent =
+                    'Não foi possível registrar a solicitação agora. Tente novamente em instantes.';
+                div.classList.add('show');
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
 
         // Toggle mostrar/ocultar senha
         function togglePassword() {

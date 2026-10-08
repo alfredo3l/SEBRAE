@@ -48,11 +48,45 @@ function dataCurta(v) {
 }
 
 /**
+ * Documento que substituiu um recusado: o mais antigo do mesmo tipo gerado
+ * depois dele. Sem isso o recusado ainda pode ser reenviado.
+ */
+function reenvioDoRecusado(doc) {
+    if (doc.status !== 'recusado' || !doc.created_at) return null;
+    const criadoEm = new Date(doc.created_at);
+    return _acompDocs
+        .filter(d => d !== doc && d.tipo_documento === doc.tipo_documento
+            && d.created_at && new Date(d.created_at) > criadoEm)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0] || null;
+}
+
+/** Quando o recusado foi reenviado (envio do substituto; se ainda não saiu, quando foi gerado) */
+function dataDoReenvio(substituto) {
+    return substituto.data_envio || substituto.created_at;
+}
+
+/**
  * Botão de ação do card: retomar o envio de um documento gerado
- * (ou reenviar um já enviado). Documentos aceitos/recusados não têm ação.
+ * (ou reenviar um já enviado/recusado). Aceitos não têm ação; o recusado
+ * perde o botão depois de reenviado e fica como histórico.
  */
 function acaoDoCard(doc) {
     const params = `'${doc.tipo_documento}'` + (doc.id ? `, '${doc.id}'` : '');
+
+    if (doc.status === 'recusado') {
+        const substituto = reenvioDoRecusado(doc);
+        if (substituto) {
+            return `<div class="st-line"><span class="acomp-muted">Reenviado</span><b>${dataCurta(dataDoReenvio(substituto))}</b></div>`;
+        }
+        // LGPD derivado das flags não tem registro: abre o termo do zero
+        const acao = doc.id
+            ? `abrirReenvioRecusado('${doc.tipo_documento}', '${doc.id}')`
+            : `abrirEnvioDocumento('${doc.tipo_documento}')`;
+        return `<button class="btn-card-reenviar" onclick="event.stopPropagation(); ${acao}"
+                    title="Gera um novo documento com os mesmos dados; a recusa fica registrada no histórico">
+                    <i class="fas fa-rotate-right"></i> Reenviar
+                </button>`;
+    }
 
     if (doc.status === 'gerado') {
         return `<button class="btn-card-enviar" onclick="event.stopPropagation(); abrirEnvioDocumento(${params})">
@@ -78,6 +112,17 @@ function abrirEnvioDocumento(tipo, docId) {
     const url = `documento?id=${encodeURIComponent(_acompParceiro.id)}&tipo=${encodeURIComponent(tipo)}`
         + (docId ? `&doc=${encodeURIComponent(docId)}` : '');
     window.location.href = url;
+}
+
+/**
+ * Reenvio de documento recusado: abre o termo com os dados do recusado, mas
+ * grava um NOVO registro (?reenvio=) — a recusa não é sobrescrita e a RPC
+ * preparar_envio_documento não aceita documento já respondido.
+ */
+function abrirReenvioRecusado(tipo, docId) {
+    if (!_acompParceiro) return;
+    window.location.href = `documento?id=${encodeURIComponent(_acompParceiro.id)}`
+        + `&tipo=${encodeURIComponent(tipo)}&reenvio=${encodeURIComponent(docId)}`;
 }
 
 /** Renderiza a grade de cards de documentos */
@@ -168,6 +213,15 @@ function eventosDoDocumento(doc) {
             done: true,
             recusa: true
         });
+        const substituto = reenvioDoRecusado(doc);
+        if (substituto) {
+            eventos.push({
+                titulo: 'Reenviado ao cliente',
+                sub: `${formatarDataHora(dataDoReenvio(substituto))} • novo documento ` +
+                    (substituto.data_envio ? 'enviado' : 'gerado, aguardando envio'),
+                done: true
+            });
+        }
         return eventos;
     }
 
@@ -215,13 +269,20 @@ function renderRecusaAcompanhamento() {
         return;
     }
 
-    cont.innerHTML = recusados.map(d => `
+    cont.innerHTML = recusados.map(d => {
+        const substituto = reenvioDoRecusado(d);
+        const linhaReenvio = substituto
+            ? `<div class="st-line"><span class="acomp-muted">Reenviado</span><b>${dataCurta(dataDoReenvio(substituto))}</b></div>`
+            : '';
+        return `
         <div class="acomp-recusa-box">
             <span class="badge-nao"><i class="fas fa-times-circle"></i> Não aceito</span>
             <div class="st-line"><span class="acomp-muted">Documento</span><b>${escAcomp(d.nome_documento)}</b></div>
             <div class="st-line"><span class="acomp-muted">Data recusa</span><b>${dataCurta(d.data_recusa || _acompParceiro.data_recusa)}</b></div>
+            ${linhaReenvio}
             <p class="acomp-recusa-nota">A manifestação de recusa permanece registrada para acompanhamento.</p>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 /**

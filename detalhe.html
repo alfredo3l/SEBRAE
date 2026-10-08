@@ -49,14 +49,6 @@
         </div>
     </nav>
 
-    <!-- ========== SETAS DE NAVEGAÇÃO ========== -->
-    <button class="nav-arrow nav-arrow-left" onclick="navegarParceiro('anterior')" title="Parceiro anterior">
-        <i class="fas fa-chevron-left"></i>
-    </button>
-    <button class="nav-arrow nav-arrow-right" onclick="navegarParceiro('proximo')" title="Próximo parceiro">
-        <i class="fas fa-chevron-right"></i>
-    </button>
-
     <!-- ========== CONTEÚDO PRINCIPAL ========== -->
     <div class="main-container">
 
@@ -382,20 +374,24 @@
                 <div class="busca-filtro-painel">
                     <div class="busca-filtro-titulo">
                         <i class="fas fa-filter"></i>
-                        Nome, CPF ou Telefone
+                        Nome, CPF, CNPJ ou Telefone
                     </div>
                     <div class="busca-filtro-conteudo">
-                        <label class="busca-label">Nome, CPF ou Telefone</label>
+                        <label class="busca-label">Nome, CPF, CNPJ ou Telefone</label>
                         <div class="busca-input-row">
                             <input
                                 type="text"
                                 id="busca-termo"
                                 class="busca-input"
-                                placeholder="Digite parte do nome, CPF ou telefone"
+                                placeholder="Digite parte do nome, CPF, CNPJ ou telefone"
                                 onkeypress="buscarParceiroEnter(event)"
+                                oninput="atualizarBotaoLimparBusca()"
                             >
                             <button class="btn-buscar-modal" onclick="executarBuscaParceiro()">
                                 <i class="fas fa-search"></i> Buscar
+                            </button>
+                            <button type="button" id="btn-limpar-busca" class="btn-limpar-filtros" onclick="limparBuscaParceiro()" title="Limpar a busca e os resultados" disabled>
+                                <i class="fas fa-eraser"></i> Limpar
                             </button>
                         </div>
                     </div>
@@ -496,6 +492,19 @@
                         <span id="perfil-role-display">—</span>
                     </div>
                 </div>
+                <div class="perfil-info-row perfil-whatsapp-row" id="perfil-whatsapp-row" style="margin-top: 14px;">
+                    <div class="perfil-info-item" style="width:100%;">
+                        <label for="perfil-whatsapp"><i class="fab fa-whatsapp"></i> Telefone com WhatsApp</label>
+                        <form id="form-whatsapp-perfil" onsubmit="salvarWhatsAppPerfil(event)">
+                            <input type="tel" id="perfil-whatsapp" placeholder="(67)99999-9999" maxlength="14" inputmode="tel" autocomplete="tel" oninput="mascaraTelefone(this)" style="margin-top: 8px; width: 100%;">
+                            <small class="perfil-whatsapp-dica">Número usado para avisos do sistema pelo WhatsApp. Deixe em branco para remover.</small>
+                            <button type="submit" id="btn-perfil-salvar-whatsapp" class="btn-salvar" style="margin-top: 10px; width: 100%;">
+                                <span class="btn-text"><i class="fab fa-whatsapp"></i> Salvar telefone</span>
+                                <span class="spinner" style="display:none;"></span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
                 <div class="perfil-info-row" style="margin-top: 14px;">
                     <div class="perfil-info-item" style="width:100%;">
                         <label><i class="fas fa-key"></i> Alterar senha</label>
@@ -524,10 +533,10 @@
     <!-- Supabase JS (CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Supabase Config -->
-    <script src="js/ambiente-banner.js"></script> <!-- FAIXA DE AMBIENTE (homologação/produção) — REMOVER após validação do SEBRAE -->
     <script src="js/supabase-config.js"></script>
     <!-- Datas sempre no fuso do atendimento (MS) -->
     <script src="js/datas.js"></script>
+    <script src="js/telefone.js"></script>
     <!-- Autenticação -->
     <script src="js/auth.js"></script>
     <!-- Foto de Perfil -->

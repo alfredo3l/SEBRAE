@@ -48,6 +48,35 @@ function dataHojePartes() {
     return { dia: h.day, mesNome: h.mesNome, ano: h.year };
 }
 
+/**
+ * Formata um valor em moeda brasileira: "1.500,00". Entende o que já foi
+ * gravado de formas diferentes ("1500", "3280,00", "12.000,00", "R$ 15,5"):
+ * com vírgula, ela separa os centavos; sem vírgula, é valor inteiro em reais
+ * (pontos = milhar). Trabalha só com texto — sem arredondamento de float.
+ */
+function formatarMoedaBR(valor) {
+    const t = String(valor ?? '').replace(/[^\d.,]/g, '');
+    if (!/\d/.test(t)) return '';
+    const virgula = t.lastIndexOf(',');
+    const inteiro = (virgula >= 0 ? t.slice(0, virgula) : t).replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0';
+    const centavos = (virgula >= 0 ? t.slice(virgula + 1).replace(/\D/g, '') : '').padEnd(2, '0').slice(0, 2);
+    return `${inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${centavos}`;
+}
+
+/** Durante a digitação: só números, ponto e vírgula (o formato sai ao deixar o campo) */
+function filtrarMoedaDoc(input) {
+    const limpo = input.value.replace(/[^\d.,]/g, '');
+    if (limpo !== input.value) input.value = limpo;
+}
+
+/** Ao deixar o campo: aplica o formato 0.000,00 */
+function aplicarMoedaDoc(input) {
+    input.value = formatarMoedaBR(input.value);
+}
+
+/** Atributos de um input de valor em R$ (campos "moeda" e a coluna de valor da DASN) */
+const ATRIBUTOS_MOEDA = ' data-moeda oninput="filtrarMoedaDoc(this)" onblur="aplicarMoedaDoc(this)" inputmode="decimal"';
+
 /** Formata um CNPJ como 00.000.000/0000-00 (o FOCO já costuma vir mascarado) */
 function formatarCNPJValor(valor) {
     let v = String(valor ?? '').replace(/\D/g, '').slice(0, 14);
@@ -180,7 +209,7 @@ const TERMOS_URC = {
         descricao: 'Parcelamento dos débitos junto à Receita Federal do Brasil (Portal do Simples Nacional).',
         campos: [
             ...camposBaseTermo(),
-            { id: 'valor', label: 'Total do Valor Parcelado (R$)', placeholder: '0.000,00' },
+            { id: 'valor', label: 'Total do Valor Parcelado (R$)', placeholder: '0.000,00', mascara: 'moeda' },
             { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
             { id: 'modalidade', label: 'Modalidade do parcelamento', tipo: 'radio', full: true, opcoes: [
                 'Parcelamento – Microempreendedor Individual – Máximo 60 meses',
@@ -218,7 +247,7 @@ const TERMOS_URC = {
         descricao: 'Parcelamento de débitos inscritos em Dívida Ativa junto à PGFN (portal REGULARIZE).',
         campos: [
             ...camposBaseTermo(),
-            { id: 'valor', label: 'Valor total do débito (R$)', placeholder: '0.000,00' },
+            { id: 'valor', label: 'Valor total do débito (R$)', placeholder: '0.000,00', mascara: 'moeda' },
             { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
             { id: 'modalidade', label: 'Acesso ao Sistema de Negociações – Parcelamento ou Acordo de Transação – Máximo 60 meses', tipo: 'check', full: true },
             { id: 'incluir_nao_exigiveis', label: 'Solicitei ao SEBRAE que incluísse os débitos não exigíveis neste parcelamento.', tipo: 'check', full: true },
@@ -307,7 +336,6 @@ const TERMOS_URC = {
         campos: [
             ...camposBaseTermo(),
             { id: 'rg', label: 'RG', placeholder: '000000000' },
-            { id: 'objeto', label: 'Objeto da formalização', full: true, placeholder: 'Ex.: Formalização de MEI — atividade de comércio varejista' },
             { id: 'documentos', label: 'Documentos utilizados na emissão do certificado', tipo: 'checklist', full: true, opcoes: [
                 'Guia de Localização Aprovada', 'CPF', 'RG', 'Comprovante de endereço',
                 'Título de eleitor', 'IRPF', 'E-mail', 'Senha do Portal GOV'
@@ -335,7 +363,6 @@ const TERMOS_URC = {
                 <p>O declarante utilizou, no momento da emissão do certificado de condição de microempreendedor
                 individual, os seguintes documentos:</p>
                 <p>${checklist}<br>${outros}</p>
-                ${(d.objeto || '').trim() ? `<p>Objeto da formalização: <b>${escHTML(d.objeto)}</b>.</p>` : ''}
                 ${blocoProcessoObservacoes(d)}
                 ${blocoLocalDataAssinatura('Campo Grande/MS', 'Assinatura')}`;
         }
@@ -551,7 +578,7 @@ function renderCampoDocumento(campo, ctx) {
             linhas += `
             <div class="doc-dasn-linha">
                 <input type="text" name="${campo.id}_${i}_ano" placeholder="Ano" class="doc-dasn-ano">
-                <input type="text" name="${campo.id}_${i}_valor" placeholder="Valor R$" class="doc-dasn-valor">
+                <input type="text" name="${campo.id}_${i}_valor" placeholder="Valor R$" class="doc-dasn-valor"${ATRIBUTOS_MOEDA}>
                 <input type="text" name="${campo.id}_${i}_hora" placeholder="hh:mm:ss" class="doc-dasn-hora">
                 <label class="doc-opcao doc-dasn-ret"><input type="checkbox" name="${campo.id}_${i}_ret"> Retificadora</label>
             </div>`;
@@ -572,7 +599,8 @@ function renderCampoDocumento(campo, ctx) {
     const readonly = travado ? ' readonly class="campo-auto"' : '';
     const badge = travado ? (campo.autoFoco ? tagAutoFoco : tagAuto) : tagEdit;
     const mascara = campo.mascara === 'cnpj' ? ' oninput="mascaraCNPJDoc(this)"'
-                  : campo.mascara === 'telefone' ? ' oninput="mascaraTelefone(this)" maxlength="14" inputmode="tel"' : '';
+                  : campo.mascara === 'telefone' ? ' oninput="mascaraTelefone(this)" maxlength="14" inputmode="tel"'
+                  : campo.mascara === 'moeda' ? ATRIBUTOS_MOEDA : '';
     const hint = campo.autoFoco ? '<small class="doc-form-hint" hidden></small>' : '';
     return `<div class="doc-form-group${full}" data-campo="${campo.id}">
         <label>${escHTML(campo.label)} ${badge}</label>
@@ -605,6 +633,8 @@ function aplicarDadosNoFormulario(slug, dados) {
         const valor = dados[inp.name];
         if (inp.type === 'checkbox') inp.checked = !!valor;
         else if (inp.type === 'radio') inp.checked = (inp.value === valor);
+        // Rascunhos antigos guardam "1500", "3280,00"…: volta já no formato moeda
+        else if (inp.hasAttribute('data-moeda')) inp.value = formatarMoedaBR(valor);
         else inp.value = valor ?? '';
     });
 
@@ -750,6 +780,28 @@ async function carregarDocumentosExistentes(docId) {
     }
 }
 
+/**
+ * Reenvio de documento recusado (?reenvio=<uuid>, vindo do Acompanhamento):
+ * devolve o registro recusado só como FONTE dos dados — não entra em
+ * registroId, então "Gerar" insere um registro novo e a recusa fica intacta.
+ */
+async function carregarDocumentoRecusado(docId, slug) {
+    try {
+        const { data, error } = await supabaseClient
+            .from('documentos')
+            .select('*')
+            .eq('id', docId)
+            .eq('parceiro_id', _docParceiro.id)
+            .eq('tipo_documento', slug)
+            .maybeSingle();
+        if (error || !data || data.status !== 'recusado') return null;
+        return data;
+    } catch (e) {
+        console.warn('documentos (carregar recusado):', e?.message || e);
+        return null;
+    }
+}
+
 /** Lê todos os valores do formulário de um termo para um objeto { name: valor } */
 function lerDadosFormularioDocumento(slug = _docTipoAtivo) {
     const form = formDoDocumento(slug);
@@ -759,6 +811,9 @@ function lerDadosFormularioDocumento(slug = _docTipoAtivo) {
     form.querySelectorAll('input, textarea, select').forEach(inp => {
         if (inp.type === 'checkbox') dados[inp.name] = inp.checked;
         else if (inp.type === 'radio') { if (inp.checked) dados[inp.name] = inp.value; }
+        // Valor em R$ sempre 0.000,00 — inclusive enquanto ainda se digita no campo
+        // (o preview, o termo e dados_formulario não esperam o blur)
+        else if (inp.hasAttribute('data-moeda')) dados[inp.name] = formatarMoedaBR(inp.value);
         else dados[inp.name] = inp.value;
     });
     // Telefone sempre no padrão do sistema: é o texto que vai ao termo (HTML/PDF),
@@ -964,47 +1019,12 @@ async function sincronizarContatoAntesDoEnvio() {
 // Webhook único dos Termos URC (todos os termos, inclusive o LGPD)
 const WEBHOOK_TERMOS_URC = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC';
 
-// Webhook que pergunta à Evolution API se o telefone tem WhatsApp e qual é o
-// JID real (fluxo [Termo URC - Verifica WhatsApp]). Não envia nada ao cliente.
-const WEBHOOK_VERIFICA_WHATSAPP = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-VERIFICA';
-
 // Resultado da última verificação de WhatsApp do telefone que receberá os termos:
 // { telefone, ok, exists, whatsapp, jid, motivo }. Null enquanto não verificado.
 let _docWhatsApp = null;
 // Contador que invalida verificações antigas (o consultor pode voltar à edição,
 // trocar o telefone e retornar antes de a primeira resposta chegar)
 let _docWhatsAppTicket = 0;
-
-/**
- * Consulta o webhook de verificação. Nunca lança: falha de rede ou do serviço
- * volta como { ok: false, exists: null } — o envio não é bloqueado nesse caso,
- * só avisado (a Evolution é a mesma que faria o envio; se ela está fora, o
- * consultor precisa saber, mas não pode ficar preso por uma verificação).
- */
-async function verificarWhatsApp(telefone) {
-    const base = { telefone, ok: false, exists: null, whatsapp: null, jid: null, motivo: null };
-    try {
-        const resp = await fetch(WEBHOOK_VERIFICA_WHATSAPP, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telefone })
-        });
-        if (!resp.ok) {
-            return { ...base, motivo: `serviço de verificação respondeu ${resp.status}` };
-        }
-        const r = await resp.json();
-        return {
-            ...base,
-            ok: r.ok !== false,
-            exists: typeof r.exists === 'boolean' ? r.exists : null,
-            whatsapp: r.whatsapp || null,
-            jid: r.jid || null,
-            motivo: r.motivo || null
-        };
-    } catch (e) {
-        return { ...base, motivo: e?.message || 'erro de conexão' };
-    }
-}
 
 /**
  * Monta o payload enviado ao n8n: dados do cliente, do documento, os campos
@@ -1815,7 +1835,7 @@ function normalizarTiposDaURL(params) {
         const slug = item.trim();
         if (slug && TERMOS_URC[slug] && !tipos.includes(slug)) tipos.push(slug);
     });
-    return params.get('doc') ? tipos.slice(0, 1) : tipos;
+    return (params.get('doc') || params.get('reenvio')) ? tipos.slice(0, 1) : tipos;
 }
 
 async function inicializarPaginaDocumento() {
@@ -1922,7 +1942,37 @@ async function inicializarPaginaDocumento() {
         retomados.push({ slug, registro });
     });
 
-    if (retomados.length) {
+    // Reenvio de recusado: se já existe rascunho "gerado" do termo, ele foi
+    // retomado acima (evita duplicar); senão os dados vêm do documento recusado
+    const reenvioId = params.get('reenvio');
+    let recusadoOrigem = null;
+    if (reenvioId && !retomados.length) {
+        recusadoOrigem = await carregarDocumentoRecusado(reenvioId, _docTipoAtivo);
+        if (recusadoOrigem) {
+            const est = estadoDoc(_docTipoAtivo);
+            est.restaurado = !!recusadoOrigem.dados_formulario
+                && Object.keys(recusadoOrigem.dados_formulario).length > 0;
+            aplicarDadosNoFormulario(_docTipoAtivo, semCamposDeContato(recusadoOrigem.dados_formulario));
+            // Mesmo atendimento: mantém a interação do documento recusado
+            if (recusadoOrigem.case_number && !_docContexto.interacao) {
+                _docContexto.interacao = {
+                    Id: recusadoOrigem.case_id_salesforce,
+                    CaseNumber: recusadoOrigem.case_number
+                };
+            }
+        }
+    }
+
+    if (recusadoOrigem) {
+        const aviso = document.getElementById('documento-aviso');
+        if (aviso) {
+            aviso.className = 'documento-aviso';
+            aviso.innerHTML = `Reenvio do documento <b>recusado</b> em ${formatarDataHora(recusadoOrigem.data_recusa)}. ` +
+                'Os dados preenchidos foram recuperados. Revise e use "Gerar e prosseguir": ' +
+                'será gerado um <b>novo documento</b>, e a recusa anterior continua registrada no histórico.';
+            aviso.style.display = 'block';
+        }
+    } else if (retomados.length) {
         const aviso = document.getElementById('documento-aviso');
         if (aviso) {
             const quando = r => r.registro.status === 'enviado'

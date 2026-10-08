@@ -113,52 +113,30 @@ function temHistoricoLGPD(p) {
 }
 
 /**
- * Linha de um cliente que ainda não tem documento nenhum. Ele precisa aparecer
- * na lista para ser acessado, mas sem termo atribuído — o documento só existe
- * depois que o consultor gera um.
- */
-function linhaSemDocumento(p) {
-    return {
-        parceiro: p,
-        doc: {
-            tipo_documento: null,
-            nome_documento: '—',
-            status: 'sem_documento',
-            salvo_foco: false,
-            arquivo_path: null,
-            data_envio: null,
-            data_aceite: null,
-            _semDocumento: true
-        }
-    };
-}
-
-/**
  * Achata parceiros + documentos em linhas de documento (Tela 1 da POC):
  * 1 linha por registro de `documentos` + a linha derivada do Termo LGPD
  * quando o cliente tem histórico dele nas flags de `parceiros`.
- * Cliente sem nenhum documento entra com uma linha "sem documento".
+ * Cliente sem nenhum termo NÃO entra na lista (06/10/2026): consultar e
+ * confirmar um cliente não pode criar registro na área de trabalho. Ele segue
+ * gravado em `parceiros` (a seleção e o envio dependem disso) e é alcançado
+ * pelo "Buscar Cliente".
  */
 function montarLinhasDocumentos(parceiros) {
     const linhas = [];
     (parceiros || []).forEach(p => {
         const docs = p.documentos || [];
         const temRegistroLGPD = docs.some(d => d.tipo_documento === 'termo-lgpd');
-        let linhasDoParceiro = 0;
 
         // Termo LGPD sem registro em `documentos`: resta o histórico das flags
         // de `parceiros` (fluxo antigo). Com registro, ele é a fonte — traz o
         // PDF, o status e a integração no FOCO, que as flags não têm.
         if (!temRegistroLGPD && temHistoricoLGPD(p)) {
             linhas.push(linhaLGPDDoParceiro(p));
-            linhasDoParceiro++;
         }
 
         docs.slice()
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            .forEach(d => { linhas.push({ parceiro: p, doc: d }); linhasDoParceiro++; });
-
-        if (linhasDoParceiro === 0) linhas.push(linhaSemDocumento(p));
+            .forEach(d => linhas.push({ parceiro: p, doc: d }));
     });
     return linhas;
 }
@@ -240,13 +218,15 @@ function atualizarAoVoltarParaAba(recarregar) {
  */
 function popularFiltroTipoDocumento() {
     const select = document.getElementById('filtro-tipo');
-    if (!select || select.options.length > 1 || typeof TERMOS_URC === 'undefined') return;
+    if (!select || select.dataset.populado || typeof TERMOS_URC === 'undefined') return;
+    select.dataset.populado = '1';
     Object.keys(TERMOS_URC).forEach(slug => {
         const opt = document.createElement('option');
         opt.value = slug;
         opt.textContent = TERMOS_URC[slug].titulo;
         select.appendChild(opt);
     });
+    if (typeof atualizarMultiFiltro === 'function') atualizarMultiFiltro('filtro-tipo');
 }
 
 /**
@@ -258,10 +238,11 @@ async function carregarParceiros() {
 
     popularFiltroTipoDocumento();
 
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:20px; color:#999;">Carregando...</td></tr>';
     document.getElementById('pagination-status')?.innerText && (document.getElementById('pagination-status').textContent = '');
     document.getElementById('pagination-parceiros') && (document.getElementById('pagination-parceiros').innerHTML = '');
 
+    const promessaFotos = carregarFotosAutores();   // em paralelo com a lista
     const { data, error } = await supabaseClient
         .from('parceiros')
         .select('*, documentos(*)')
@@ -271,12 +252,17 @@ async function carregarParceiros() {
         // Sessão expirada leva ao login; só erro real vira mensagem na tela
         if (tratarErroDeSessao(error)) return;
         console.error('Erro ao carregar parceiros:', error.message);
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#dc3545;">Erro ao carregar dados.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:20px; color:#dc3545;">Erro ao carregar dados.</td></tr>';
         return;
     }
 
+    // O que a lista mostra depende do perfil (operador vê só os próprios
+    // termos): sem esperar, o operador veria por um instante os de todos
+    await esperarPerfilDaLista();
+    await promessaFotos;
+
     dadosParceiros = montarLinhasDocumentos(data);
-    dadosFiltrados = dadosParceiros;
+    aplicarFiltrosParceiros();
     paginaParceiros = 1;
     renderizarTabelaParceiros();
 }
@@ -290,6 +276,7 @@ async function recarregarListaAoVivo() {
 
     const paginaAtual = paginaParceiros;
 
+    const promessaFotos = carregarFotosAutores();   // pega foto trocada no meio-tempo
     const { data, error } = await supabaseClient
         .from('parceiros')
         .select('*, documentos(*)')
@@ -300,6 +287,8 @@ async function recarregarListaAoVivo() {
         console.warn('Atualização ao vivo falhou:', error.message);
         return;
     }
+    await esperarPerfilDaLista();
+    await promessaFotos;
 
     dadosParceiros = montarLinhasDocumentos(data);
     aplicarFiltrosParceiros(); // mantém os filtros escolhidos pelo usuário
@@ -327,7 +316,18 @@ function renderizarTabelaParceiros() {
     tbody.innerHTML = '';
 
     if (paginados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Nenhum resultado encontrado.</td></tr>';
+        // Operador: diz o porquê da lista vazia — sem filtro (nada hoje) ou
+        // pesquisando cliente que só tem termos fora da área dele
+        let msg = 'Nenhum resultado encontrado.';
+        if (_perfilAtual?.role === 'operador') {
+            if (!temFiltroAtivo()) {
+                msg = 'Nenhum termo gerado por você hoje.';
+            } else if (termosForaDaAreaDoOperador(textoPesquisaLista()) > 0) {
+                msg = 'Nenhum termo seu de hoje para esta pesquisa. Este cliente tem termos de outros dias ou de outros atendimentos — '
+                    + '<button type="button" class="link-buscar-cliente" onclick="abrirBuscaComPesquisa()">use o Buscar Cliente</button>.';
+            }
+        }
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:#999;">${msg}</td></tr>`;
     } else {
         // Renderiza todas as linhas de forma síncrona de uma só vez
         paginados.forEach((linha, idx) => tbody.appendChild(criarLinhaDocumento(linha, idx)));
@@ -427,8 +427,6 @@ const BADGES_STATUS_DOC = {
     recusado:   { classe: 'badge-recusado', icone: 'ban',           rotulo: 'Recusado' },
     // Cliente ainda sem documento enviado (linha derivada do Termo LGPD)
     nao_aceito: { classe: 'badge-pendente', icone: 'clock',         rotulo: 'Pendente' },
-    // Cliente recém-cadastrado: nenhum termo foi gerado para ele ainda
-    sem_documento: { classe: 'badge-pendente', icone: 'minus',      rotulo: 'Sem documento' }
 };
 
 /**
@@ -445,6 +443,239 @@ async function abrirPDFPorPath(path) {
         return;
     }
     window.open(data.signedUrl, '_blank');
+}
+
+// ===== Autoria dos termos (06/10/2026) =====
+// documentos.criado_por/_nome/_email são gravados pelo banco (trigger) no
+// INSERT e imutáveis — ver supabase_add_criado_por_documentos.sql.
+
+/** Promessa do perfil do usuário (verificarAutenticacao), ligada no DOMContentLoaded */
+let _promessaPerfilLista = null;
+
+async function esperarPerfilDaLista() {
+    if (_promessaPerfilLista) {
+        try { await _promessaPerfilLista; } catch { /* sem perfil: escopo restrito */ }
+    }
+}
+
+/**
+ * Admin e visualizador veem os termos de todos; o operador, só os que gerou.
+ * Vale só para a lista — no Acompanhamento o operador vê o histórico completo
+ * do cliente (decisão do desenvolvedor). Sem perfil carregado, restringe.
+ */
+function veTodosOsTermos() {
+    const role = _perfilAtual?.role;
+    return role === 'admin' || role === 'visualizador';
+}
+
+/**
+ * Área de trabalho do operador (item 4 do SEBRAE, 06/10/2026): só os termos
+ * que ELE gerou e que foram gerados HOJE (data de criação, horário de MS).
+ * É só exibição — nada é apagado nem alterado: os termos antigos seguem no
+ * banco, para o admin/visualizador na lista e para todos no Acompanhamento.
+ */
+function termoVisivelNaLista(doc) {
+    if (veTodosOsTermos()) return true;
+    return !!doc.criado_por && doc.criado_por === _perfilAtual?.id && geradoHojeSebrae(doc);
+}
+
+/** Dia (aaaa-mm-dd) de uma data no horário de MS */
+function chaveDiaSebrae(valor) {
+    const p = partesDataSebrae(valor);
+    return p ? `${p.year}-${p.month}-${p.day}` : null;
+}
+
+/** O termo foi gerado hoje? (created_at no horário de MS) */
+function geradoHojeSebrae(doc) {
+    return !!doc.created_at && chaveDiaSebrae(doc.created_at) === chaveDiaSebrae(new Date());
+}
+
+/**
+ * À meia-noite de MS a área de trabalho do operador se renova sozinha, mesmo
+ * com a página aberta: refiltra os dados já carregados (sem ir ao banco).
+ * Computador que dormiu é coberto pelo atualizarAoVoltarParaAba().
+ */
+let _timerViradaDoDia = null;
+function agendarViradaDoDia() {
+    clearTimeout(_timerViradaDoDia);
+    const agora = new Date();
+    const p = partesDataSebrae(agora);
+    // MS não tem horário de verão: segundos/milissegundos são os mesmos em qualquer fuso
+    const msAteMeiaNoite = ((24 - Number(p.hour)) * 60 - Number(p.minute)) * 60000
+        - agora.getSeconds() * 1000 - agora.getMilliseconds();
+    _timerViradaDoDia = setTimeout(() => {
+        if (document.getElementById('tbody-parceiros')) {
+            aplicarFiltrosParceiros();
+            const totalPaginas = Math.max(1, Math.ceil(dadosFiltrados.length / registrosPorPagina));
+            paginaParceiros = Math.min(paginaParceiros, totalPaginas);
+            renderizarTabelaParceiros();
+        }
+        agendarViradaDoDia();
+    }, msAteMeiaNoite + 2000);   // 2 s de folga para já estar no novo dia
+}
+
+/**
+ * Fotos dos autores (perfis_usuarios.foto_url), buscadas ao vivo junto com a
+ * lista — trocar a foto no perfil reflete na próxima carga. A RLS só expõe
+ * perfis ativos (inativos só para admin): sem foto visível, ficam as iniciais.
+ */
+let _fotosAutores = {};
+
+// Tamanhos pedidos ao Supabase (2x o exibido, para telas de alta densidade)
+const PX_FOTO_AVATAR = 64;    // círculo de 30px da tabela
+const PX_FOTO_CARTAO = 224;   // foto de 112px do cartão do mouse
+// Tempo máximo que a lista espera as fotos antes de ser desenhada
+const ESPERA_MAX_FOTOS_MS = 1500;
+
+/**
+ * Miniatura gerada pelo Supabase (transformação de imagem) em vez do original:
+ * as fotos enviadas chegam a ~2 MB e eram baixadas inteiras para um círculo de
+ * 30px. 64px = ~1–7 KB, com cache no navegador (max-age 3600). O "?v=" gravado
+ * no upload (perfil.js) é repassado: foto trocada = URL nova, sem cache velho.
+ * URL fora do padrão do Storage volta como está.
+ */
+function urlFotoAutor(foto, px) {
+    const m = String(foto || '').match(/^(https?:\/\/[^?#]+?)\/storage\/v1\/object\/public\/([^?#]+)(\?[^#]*)?$/);
+    if (!m) return foto;
+    const extra = m[3] ? '&' + m[3].slice(1) : '';
+    return `${m[1]}/storage/v1/render/image/public/${m[2]}?width=${px}&height=${px}&resize=cover&quality=80${extra}`;
+}
+
+/** Baixa e decodifica a imagem; nunca rejeita (falha = segue com as iniciais) */
+const _fotosPreCarregadas = [];   // mantém as referências durante a página
+function preCarregarImagem(src) {
+    return new Promise(resolve => {
+        const img = new Image();
+        _fotosPreCarregadas.push(img);
+        img.onload = () => (img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(resolve);
+        img.onerror = () => resolve();
+        img.src = src;
+    });
+}
+
+/**
+ * Busca o mapa id→foto e já pré-carrega as miniaturas — em paralelo com a
+ * consulta da lista —, para a tabela nascer com as fotos em vez de elas
+ * "piscarem" depois. Espera no máximo ESPERA_MAX_FOTOS_MS: rede lenta não
+ * trava a lista (a foto aparece quando chegar). As fotos do cartão (224px)
+ * vêm em segundo plano. São poucos usuários: pré-carrega todos, o que cobre
+ * qualquer página da paginação.
+ */
+async function carregarFotosAutores() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('perfis_usuarios')
+            .select('id, foto_url')
+            .not('foto_url', 'is', null);
+        if (error) throw error;
+        const mapa = {};
+        (data || []).forEach(u => { if (u.foto_url) mapa[u.id] = u.foto_url; });
+        _fotosAutores = mapa;
+
+        const fotos = Object.values(mapa);
+        fotos.forEach(f => preCarregarImagem(urlFotoAutor(f, PX_FOTO_CARTAO)));
+        await Promise.race([
+            Promise.all(fotos.map(f => preCarregarImagem(urlFotoAutor(f, PX_FOTO_AVATAR)))),
+            new Promise(r => setTimeout(r, ESPERA_MAX_FOTOS_MS))
+        ]);
+    } catch (e) {
+        console.warn('Fotos dos autores:', e?.message || e);   // segue com as iniciais
+    }
+}
+
+/** Iniciais para o avatar: primeiro e último nome; nome único → 2 primeiras letras */
+function iniciaisDoNome(nome) {
+    const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+    if (!partes.length) return '?';
+    const ini = partes.length === 1
+        ? partes[0].slice(0, 2)
+        : partes[0][0] + partes[partes.length - 1][0];
+    return ini.toUpperCase();
+}
+
+/** Cor fixa por usuário (mesma pessoa, mesma cor em toda a lista) */
+const CORES_AVATAR_AUTOR = ['#0056a6', '#2e7d32', '#6a1b9a', '#c62828', '#00838f', '#ef6c00', '#4e342e', '#283593'];
+function corDoAutor(chave) {
+    let h = 0;
+    for (const ch of String(chave || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return CORES_AVATAR_AUTOR[h % CORES_AVATAR_AUTOR.length];
+}
+
+/** Célula "Criado por": círculo com as iniciais; nome e e-mail ao passar o mouse */
+function celulaAutorDocumento(doc) {
+    const nome = doc.criado_por_nome || '';
+    const email = doc.criado_por_email || '';
+    if (!doc.criado_por && !nome && !email) {
+        return '<span class="badge-dash" title="Autor não registrado (termo anterior ao controle de autoria ou gerado automaticamente)">—</span>';
+    }
+    // Com foto: a imagem cobre as iniciais; se não carregar, ela sai e as iniciais aparecem
+    const foto = doc.criado_por && _fotosAutores[doc.criado_por];
+    const src = foto ? urlFotoAutor(foto, PX_FOTO_AVATAR) : '';
+    const img = src ? `<img src="${escHTMLLista(src)}" alt="" onerror="this.remove()">` : '';
+    // Sem "title": o cartão do mouse (mostrarCartaoAutor) traz foto ampliada, nome e e-mail
+    return `<span class="avatar-autor" style="background:${corDoAutor(email || nome)}"
+        data-nome="${escHTMLLista(nome)}" data-email="${escHTMLLista(email)}" data-foto="${escHTMLLista(foto ? urlFotoAutor(foto, PX_FOTO_CARTAO) : '')}"
+        aria-label="Criado por ${escHTMLLista([nome, email].filter(Boolean).join(' — '))}">${escHTMLLista(iniciaisDoNome(nome || email))}${img}</span>`;
+}
+
+/**
+ * Cartão do autor ao passar o mouse no avatar: foto ampliada (quando houver e
+ * carregar), nome e e-mail. O title nativo não mostra imagem, por isso é um
+ * elemento próprio — preso ao body para não ser cortado pela rolagem da tabela.
+ */
+let _cartaoAutor = null;
+
+function mostrarCartaoAutor(avatar) {
+    if (!_cartaoAutor) {
+        _cartaoAutor = document.createElement('div');
+        _cartaoAutor.className = 'cartao-autor';
+        _cartaoAutor.setAttribute('role', 'tooltip');
+        document.body.appendChild(_cartaoAutor);
+    }
+    const { nome, email, foto } = avatar.dataset;
+    // Só mostra a foto se a miniatura carregou (onerror a removeu → sem foto)
+    const fotoOk = foto && avatar.querySelector('img');
+    _cartaoAutor.innerHTML =
+        // Fundo na cor do usuário: foto PNG com transparência não some no cartão branco
+        (fotoOk ? `<img class="cartao-autor-foto" src="${escHTMLLista(foto)}" alt="" style="background:${avatar.style.background}">` : '') +
+        (nome ? `<div class="cartao-autor-nome">${escHTMLLista(nome)}</div>` : '') +
+        (email ? `<div class="cartao-autor-email">${escHTMLLista(email)}</div>` : '') +
+        '<div class="cartao-autor-rotulo">Gerou este termo</div>';
+
+    // Acima do avatar, centralizado; sem espaço em cima, vai para baixo
+    _cartaoAutor.style.visibility = 'hidden';
+    _cartaoAutor.classList.add('visivel');
+    const a = avatar.getBoundingClientRect();
+    const c = _cartaoAutor.getBoundingClientRect();
+    const margem = 8;
+    let top = a.top - c.height - margem;
+    if (top < margem) top = a.bottom + margem;
+    let left = a.left + a.width / 2 - c.width / 2;
+    left = Math.max(margem, Math.min(left, window.innerWidth - c.width - margem));
+    _cartaoAutor.style.top = `${top + window.scrollY}px`;
+    _cartaoAutor.style.left = `${left + window.scrollX}px`;
+    _cartaoAutor.style.visibility = '';
+}
+
+function esconderCartaoAutor() {
+    _cartaoAutor?.classList.remove('visivel');
+}
+
+// Delegação: a tabela é redesenhada a cada filtro/página/atualização ao vivo
+document.addEventListener('mouseover', e => {
+    const avatar = e.target.closest?.('.avatar-autor');
+    if (avatar) mostrarCartaoAutor(avatar);
+});
+document.addEventListener('mouseout', e => {
+    const avatar = e.target.closest?.('.avatar-autor');
+    if (avatar && !avatar.contains(e.relatedTarget)) esconderCartaoAutor();
+});
+window.addEventListener('scroll', esconderCartaoAutor, true);
+
+/** Escapa texto para atributos/HTML da lista */
+function escHTMLLista(v) {
+    return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
@@ -487,6 +718,7 @@ function criarLinhaDocumento(linha, idx) {
         <td>${dataEnvio}</td>
         <td>${dataAceite}</td>
         <td>${focoBadge}</td>
+        <td class="cell-autor">${celulaAutorDocumento(doc)}</td>
         <td>${acoes}</td>
     `;
 
@@ -506,13 +738,18 @@ function filtrarParceiros() {
     atualizarBotaoLimparFiltros();
 }
 
+/** Campos de filtro da lista ("filtro-usuario" só aparece para o administrador) */
+const CAMPOS_FILTRO_LISTA = ['filtro-pesquisa', 'filtro-status', 'filtro-tipo', 'filtro-usuario'];
+
 /**
- * Limpa os três filtros da lista e volta a mostrar todos os documentos.
+ * Limpa os filtros da lista e volta a mostrar todos os documentos.
  */
 function limparFiltrosParceiros() {
-    ['filtro-pesquisa', 'filtro-status', 'filtro-tipo'].forEach(id => {
+    CAMPOS_FILTRO_LISTA.forEach(id => {
         const campo = document.getElementById(id);
-        if (campo) campo.value = '';
+        if (!campo) return;
+        if (campo.multiple) limparMultiFiltro(id);
+        else campo.value = '';
     });
     filtrarParceiros();
     document.getElementById('filtro-pesquisa')?.focus();
@@ -520,8 +757,22 @@ function limparFiltrosParceiros() {
 
 /** Algum filtro preenchido? */
 function temFiltroAtivo() {
-    return ['filtro-pesquisa', 'filtro-status', 'filtro-tipo']
-        .some(id => (document.getElementById(id)?.value || '').trim() !== '');
+    return CAMPOS_FILTRO_LISTA.some(id => {
+        const campo = document.getElementById(id);
+        if (!campo) return false;
+        return campo.multiple ? valoresMultiFiltro(id).length > 0 : campo.value.trim() !== '';
+    });
+}
+
+/**
+ * Status, Tipo de Documento e Usuário viram filtros multisseleção com busca
+ * digitável (js/multi-filtro.js). Nenhuma opção marcada = Todos.
+ */
+function inicializarMultiFiltrosLista() {
+    if (typeof criarMultiFiltro !== 'function') return;
+    popularFiltroTipoDocumento();   // opções do tipo antes de montar o componente
+    ['filtro-status', 'filtro-tipo', 'filtro-usuario'].forEach(id =>
+        criarMultiFiltro(document.getElementById(id)));
 }
 
 /** O botão "Limpar" só fica disponível quando há filtro para limpar */
@@ -535,7 +786,7 @@ function atualizarBotaoLimparFiltros() {
  * tela mesmo antes de o consultor clicar em "Filtrar".
  */
 function ligarBotaoLimparFiltros() {
-    ['filtro-pesquisa', 'filtro-status', 'filtro-tipo'].forEach(id => {
+    CAMPOS_FILTRO_LISTA.forEach(id => {
         const campo = document.getElementById(id);
         if (!campo) return;
         campo.addEventListener('input', atualizarBotaoLimparFiltros);
@@ -550,21 +801,122 @@ function ligarBotaoLimparFiltros() {
  */
 function aplicarFiltrosParceiros() {
     const pesquisa = document.getElementById('filtro-pesquisa')?.value.trim().toLowerCase() || '';
-    const status = document.getElementById('filtro-status')?.value || '';
-    const tipo = document.getElementById('filtro-tipo')?.value || '';
+    // Multisseleção: lista vazia = Todos
+    const status = valoresMultiFiltro('filtro-status');
+    const tipo = valoresMultiFiltro('filtro-tipo');
+    // Filtro por autor: só vale para o administrador (o campo só aparece para ele)
+    const usuario = _perfilAtual?.role === 'admin' ? valoresMultiFiltro('filtro-usuario') : [];
 
     dadosFiltrados = dadosParceiros.filter(({ parceiro: p, doc }) => {
-        if (status && doc.status !== status) return false;
-        if (tipo && doc.tipo_documento !== tipo) return false;
-        if (pesquisa) {
-            const alvo = [
-                p.cpf, p.nome_razao_social, p.telefone,
-                p.id_salesforce, doc.nome_documento
-            ].map(v => (v || '').toLowerCase());
-            if (!alvo.some(v => v.includes(pesquisa))) return false;
-        }
+        if (!termoVisivelNaLista(doc)) return false;
+        if (status.length && !status.includes(doc.status)) return false;
+        if (tipo.length && !tipo.includes(doc.tipo_documento)) return false;
+        if (usuario.length && !usuario.includes(doc.criado_por)) return false;
+        if (pesquisa && !linhaCasaPesquisa(p, doc, pesquisa)) return false;
         return true;
     });
+}
+
+/** A linha (cliente + termo) contém o texto pesquisado? (pesquisa já em minúsculas) */
+function linhaCasaPesquisa(p, doc, pesquisa) {
+    return [
+        p.cpf, p.nome_razao_social, p.telefone,
+        p.id_salesforce, doc.nome_documento,
+        doc.criado_por_nome, doc.criado_por_email
+    ].some(v => (v || '').toLowerCase().includes(pesquisa));
+}
+
+/** Texto do campo Pesquisar, normalizado como a filtragem usa */
+function textoPesquisaLista() {
+    return document.getElementById('filtro-pesquisa')?.value.trim().toLowerCase() || '';
+}
+
+/**
+ * Operador: quantos termos casam com a pesquisa mas estão FORA da área de
+ * trabalho dele (outros dias ou outros operadores). Os dados já estão
+ * carregados (a RLS libera a leitura) — só a tela os esconde. 0 para os
+ * demais perfis.
+ */
+function termosForaDaAreaDoOperador(pesquisa) {
+    if (veTodosOsTermos() || !pesquisa) return 0;
+    return dadosParceiros.filter(({ parceiro: p, doc }) =>
+        !termoVisivelNaLista(doc) && linhaCasaPesquisa(p, doc, pesquisa)).length;
+}
+
+/**
+ * Pesquisa confirmada (Enter ou botão Filtrar): filtra e, se o operador não
+ * achou nada na área dele mas o cliente tem termos em outros dias/atendimentos,
+ * abre o popup orientando a usar o Buscar Cliente. Enquanto ele só digita, o
+ * aviso aparece na própria tabela (renderizarTabelaParceiros), sem interromper.
+ */
+function confirmarPesquisaLista() {
+    filtrarParceiros();
+    if (dadosFiltrados.length === 0 && termosForaDaAreaDoOperador(textoPesquisaLista()) > 0) {
+        abrirModalPesquisaDia(document.getElementById('filtro-pesquisa').value.trim());
+    }
+}
+
+function abrirModalPesquisaDia(termo) {
+    const modal = document.getElementById('modal-pesquisa-dia');
+    if (!modal) return;
+    document.getElementById('modal-pesquisa-dia-termo').textContent = termo;
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('btn-pesquisa-dia-buscar')?.focus(), 50);
+}
+
+function fecharModalPesquisaDia() {
+    const modal = document.getElementById('modal-pesquisa-dia');
+    if (modal) modal.style.display = 'none';
+}
+
+/** Do popup para o Buscar Cliente, já com o texto digitado e a busca no FOCO disparada */
+function abrirBuscaComPesquisa() {
+    const termo = document.getElementById('filtro-pesquisa')?.value.trim() || '';
+    fecharModalPesquisaDia();
+    abrirModalBusca();
+    const campo = document.getElementById('busca-termo');
+    if (!campo || !termo) return;
+    campo.value = termo;
+    atualizarBotaoLimparBusca();
+    executarBuscaParceiro();
+}
+
+/**
+ * Opções do filtro "Usuário" (só administrador): operadores primeiro e, num
+ * grupo à parte, administradores — admin também gera termos. Inativos entram
+ * marcados, pois podem ter termos antigos (a RLS mostra inativos ao admin).
+ * Valor = id do usuário, comparado com documentos.criado_por.
+ */
+async function popularFiltroUsuario() {
+    const select = document.getElementById('filtro-usuario');
+    if (!select || select.dataset.populado) return;
+    select.dataset.populado = '1';
+
+    const { data, error } = await supabaseClient
+        .from('perfis_usuarios')
+        .select('id, nome_completo, email, role, ativo')
+        .in('role', ['operador', 'admin'])
+        .order('nome_completo');
+    if (error) {
+        console.warn('Filtro de usuário:', error.message);
+        delete select.dataset.populado;   // tenta de novo na próxima chamada
+        return;
+    }
+
+    const grupo = (rotulo, role) => {
+        const usuarios = (data || []).filter(u => u.role === role);
+        if (!usuarios.length) return '';
+        const opcoes = usuarios.map(u => {
+            const nome = u.nome_completo || u.email;
+            // Homônimos (há duas "Patricia Regina de Souza"): o e-mail desempata
+            const homonimo = usuarios.filter(x => (x.nome_completo || x.email) === nome).length > 1;
+            const texto = nome + (homonimo ? ` (${u.email})` : '') + (u.ativo ? '' : ' — inativo');
+            return `<option value="${escHTMLLista(u.id)}" title="${escHTMLLista(u.email)}">${escHTMLLista(texto)}</option>`;
+        }).join('');
+        return `<optgroup label="${rotulo}">${opcoes}</optgroup>`;
+    };
+    select.insertAdjacentHTML('beforeend', grupo('Operadores', 'operador') + grupo('Administradores', 'admin'));
+    if (typeof atualizarMultiFiltro === 'function') atualizarMultiFiltro('filtro-usuario');
 }
 
 // ===== Controle de Permissões por Role =====
@@ -586,6 +938,23 @@ function aplicarPermissoesDetalhe() {
  * dos testes) só aparece para quem pode editar.
  */
 function aplicarPermissoesLista() {
+    // Operador pesquisa só na área de trabalho dele (termos dele de hoje)
+    if (_perfilAtual?.role === 'operador') {
+        const pesquisa = document.getElementById('filtro-pesquisa');
+        // Rótulo = escopo (só os termos dele de hoje); campo = o que digitar
+        const rotulo = document.getElementById('rotulo-pesquisa');
+        if (rotulo) rotulo.textContent = 'Pesquisar nos seus termos de hoje';
+        if (pesquisa) pesquisa.placeholder = 'Nome, CPF, telefone ou Account ID';
+    }
+
+    if (_perfilAtual?.role === 'admin' && _perfilAtual?.ativo === true) {
+        const grupo = document.getElementById('grupo-filtro-usuario');
+        if (grupo) {
+            grupo.hidden = false;
+            popularFiltroUsuario();
+        }
+    }
+
     if (!usuarioPodeEditar()) return;
 
     const btnNovo = document.querySelector('.btn-novo-cliente');
@@ -622,35 +991,6 @@ function invalidarCacheParceiro(id) {
 }
 
 // ===== Funções da Página de Detalhe =====
-
-/**
- * Navega para o parceiro anterior ou próximo
- */
-async function navegarParceiro(direcao) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const idAtual = urlParams.get('id');
-    if (!idAtual) return;
-
-    // Busca todos os IDs ordenados
-    const { data } = await supabaseClient
-        .from('parceiros')
-        .select('id')
-        .order('created_at', { ascending: false });
-
-    if (!data || data.length === 0) return;
-
-    const ids = data.map(p => p.id);
-    const indexAtual = ids.indexOf(idAtual);
-
-    let novoIndex;
-    if (direcao === 'anterior') {
-        novoIndex = indexAtual > 0 ? indexAtual - 1 : ids.length - 1;
-    } else {
-        novoIndex = indexAtual < ids.length - 1 ? indexAtual + 1 : 0;
-    }
-
-    window.location.href = 'detalhe?id=' + ids[novoIndex];
-}
 
 // URL do webhook n8n que envia o termo LGPD via WhatsApp
 /**
@@ -1372,32 +1712,6 @@ function lgpdParaBoolean(val) {
 }
 
 /**
- * Formato padrão do telefone no sistema — o MESMO em parceiros, nos formulários
- * dos termos, no payload do n8n e no Phone do FOCO:
- *   celular (11 dígitos): (67)99245-1961
- *   fixo    (10 dígitos): (67)3389-5349   ← fixo pode ter WhatsApp Business
- * Só os dígitos importam; qualquer outra quantidade volta como veio.
- */
-function formatarTelefoneParaCadastro(tel) {
-    if (!tel) return '';
-    const nums = String(tel).replace(/\D/g, '');
-    if (nums.length === 11) return `(${nums.substring(0, 2)})${nums.substring(2, 7)}-${nums.substring(7)}`;
-    if (nums.length === 10) return `(${nums.substring(0, 2)})${nums.substring(2, 6)}-${nums.substring(6)}`;
-    return tel;
-}
-
-/** Só os dígitos do telefone (para comparar números escritos de formas diferentes) */
-function digitosTelefone(tel) {
-    return String(tel || '').replace(/\D/g, '');
-}
-
-/** Telefone utilizável: 10 (fixo) ou 11 (celular) dígitos */
-function telefoneValido(tel) {
-    const n = digitosTelefone(tel).length;
-    return n === 10 || n === 11;
-}
-
-/**
  * Máscara de CPF: 000.000.000-00
  */
 function mascaraCPF(input) {
@@ -1406,21 +1720,6 @@ function mascaraCPF(input) {
     v = v.replace(/(\d{3})(\d)/, '$1.$2');
     v = v.replace(/(\d{3})(\d)/, '$1.$2');
     v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-    input.value = v;
-}
-
-/**
- * Máscara de Telefone: (00)0000-0000 enquanto há até 10 dígitos (fixo),
- * (00)00000-0000 ao chegar no 11º (celular). Antes o hífen era fixo após o
- * 5º dígito e um fixo saía como (67)33214-567.
- */
-function mascaraTelefone(input) {
-    let v = input.value.replace(/\D/g, '');
-    v = v.substring(0, 11);
-    v = v.replace(/^(\d{2})(\d)/, '($1)$2');
-    v = v.length <= 12   // "(67)" + até 8 dígitos = fixo; o 9º dígito muda para o corte do celular
-        ? v.replace(/^(\(\d{2}\)\d{4})(\d)/, '$1-$2')
-        : v.replace(/^(\(\d{2}\)\d{5})(\d)/, '$1-$2');
     input.value = v;
 }
 
@@ -1474,7 +1773,8 @@ async function cadastrarParceiro(event) {
                 termo_aceito_foco: false,
                 enviado_piiq: false
             }])
-            .select();
+            .select('id')
+            .single();
 
         if (error) {
             if (error.message.includes('duplicate') || error.message.includes('unique')) {
@@ -1491,10 +1791,10 @@ async function cadastrarParceiro(event) {
         sucessoDiv.style.display = 'flex';
         document.getElementById('form-cadastro').reset();
 
-        // Recarrega a tabela
-        setTimeout(async () => {
-            fecharModalCadastro();
-            await carregarParceiros();
+        // Cliente sem termo não aparece na lista: segue direto para a seleção
+        // de documentos, como o "Confirmar Cliente" da busca
+        setTimeout(() => {
+            window.location.href = `detalhe?id=${data.id}`;
         }, 1200);
 
     } catch (err) {
@@ -1517,6 +1817,7 @@ document.addEventListener('keydown', function (e) {
         fecharModalEdicao();
         fecharModalExcluir();
         fecharModalBusca();
+        fecharModalPesquisaDia();
     }
 });
 
@@ -1553,7 +1854,35 @@ function abrirModalBusca() {
         }, 200);
     });
 
+    atualizarBotaoLimparBusca();
     setTimeout(() => document.getElementById('busca-termo').focus(), 100);
+}
+
+/**
+ * "Limpar" do modal Buscar Cliente: apaga o termo, os resultados e o filtro
+ * rápido e devolve o foco ao campo — para começar outra busca sem fechar o modal.
+ */
+function limparBuscaParceiro() {
+    if (_buscaEmAndamento) return;
+    document.getElementById('busca-termo').value = '';
+    const filtroRapido = document.getElementById('busca-filtro-rapido');
+    if (filtroRapido) filtroRapido.value = '';
+    document.getElementById('busca-resultados-container').style.display = 'none';
+    document.getElementById('busca-vazio').style.display = 'none';
+    resultadosBusca = [];
+    paginaBusca = 1;
+    atualizarBotaoLimparBusca();
+    document.getElementById('busca-termo').focus();
+}
+
+/** Habilita o "Limpar" só quando há termo digitado ou resultado (ou aviso) na tela */
+function atualizarBotaoLimparBusca() {
+    const btn = document.getElementById('btn-limpar-busca');
+    if (!btn) return;
+    const termo = (document.getElementById('busca-termo')?.value || '').trim();
+    const visivel = id => document.getElementById(id)?.style.display !== 'none';
+    btn.disabled = _buscaEmAndamento
+        || !(termo || visivel('busca-resultados-container') || visivel('busca-vazio'));
 }
 
 function fecharModalBusca() {
@@ -1569,9 +1898,27 @@ async function executarBuscaParceiro() {
     const termo = document.getElementById('busca-termo').value.trim();
     if (!termo) return;
 
+    // Número incompleto (ex.: "009.85"): avisa na hora em vez de cair na busca
+    // lenta por nome no FOCO, que não acharia nada
+    const incompleto = typeof avisoNumeroIncompleto === 'function' ? avisoNumeroIncompleto(termo) : null;
+    if (incompleto) {
+        const vazioEl = document.getElementById('busca-vazio');
+        document.getElementById('busca-resultados-container').style.display = 'none';
+        document.getElementById('busca-loading').style.display = 'none';
+        if (vazioEl) {
+            vazioEl.style.display = 'flex';
+            vazioEl.innerHTML = `<i class="fas fa-keyboard" style="color:#b45309;"></i>
+                 <span style="color:#92400e;">${incompleto}</span>`;
+        }
+        atualizarBotaoLimparBusca();
+        document.getElementById('busca-termo').focus();
+        return;
+    }
+
     // Evita múltiplas buscas concorrentes
     if (_buscaEmAndamento) return;
     _buscaEmAndamento = true;
+    atualizarBotaoLimparBusca();
 
     const inputTermo = document.getElementById('busca-termo');
     const btnBuscar = document.querySelector('.btn-buscar-modal');
@@ -1580,14 +1927,17 @@ async function executarBuscaParceiro() {
 
     // Mensagem de loading diferente para CPF x Nome/Telefone
     const ehCPF = typeof pareceCPF === 'function' && pareceCPF(termo);
+    const ehCNPJ = typeof pareceCNPJ === 'function' && pareceCNPJ(termo);
     const ehTelefone = typeof pareceTelefone === 'function' && pareceTelefone(termo);
     const textoOriginalLoading = loadingTextoEl ? loadingTextoEl.textContent : null;
 
     if (loadingTextoEl) {
         if (ehCPF) {
             loadingTextoEl.textContent = 'Buscando CPF...';
+        } else if (ehCNPJ) {
+            loadingTextoEl.textContent = 'Buscando CNPJ...';
         } else if (ehTelefone) {
-            loadingTextoEl.textContent = 'Buscando telefone no FOCO (pode levar até 1 minuto)...';
+            loadingTextoEl.textContent = 'Buscando telefone no FOCO...';
         } else {
             loadingTextoEl.textContent = 'Buscando por nome (pode levar alguns segundos)...';
         }
@@ -1626,6 +1976,7 @@ async function executarBuscaParceiro() {
             loadingTextoEl.textContent = textoOriginalLoading;
         }
         _buscaEmAndamento = false;
+        atualizarBotaoLimparBusca();
     }, 70000); // acima dos 60 s da consulta (busca por telefone leva ~30 s no FOCO)
 
     try {
@@ -1681,6 +2032,7 @@ async function executarBuscaParceiro() {
         }
 
         _buscaEmAndamento = false;
+        atualizarBotaoLimparBusca();
     }
 }
 
@@ -1893,13 +2245,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Supabase já está no storage do navegador, então as queries saem
         // autenticadas sem esperar o perfil ser buscado (economiza ~300ms).
         const promessaAuth = verificarAutenticacao();
+        _promessaPerfilLista = promessaAuth;
 
         const promessaDados = (async () => {
             try {
                 // Página de lista: carregar parceiros do banco
                 if (document.getElementById('tbody-parceiros')) {
+                    inicializarMultiFiltrosLista();
                     ligarBotaoLimparFiltros();
                     await carregarParceiros();
+                    agendarViradaDoDia();   // operador: lista do dia se renova à meia-noite
                     // Aceite/recusa chega pelo WhatsApp: atualiza a tela sozinha
                     await ligarAtualizacaoAoVivo('lista-clientes', recarregarListaAoVivo);
                     atualizarAoVoltarParaAba(recarregarListaAoVivo);
@@ -1941,7 +2296,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             filtroPesquisa.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     clearTimeout(_debounceFiltroPesquisa);
-                    filtrarParceiros();
+                    confirmarPesquisaLista();   // pode abrir o popup do operador
                 }
             });
         }
@@ -1949,6 +2304,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Selects: filtra ao mudar a opção
         filtroStatus?.addEventListener('change', () => filtrarParceiros());
         filtroTipo?.addEventListener('change', () => filtrarParceiros());
+        document.getElementById('filtro-usuario')?.addEventListener('change', () => filtrarParceiros());
     } catch (err) {
         console.error('Erro na inicialização:', err);
     }

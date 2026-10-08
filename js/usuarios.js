@@ -3,6 +3,7 @@
    ============================================================ */
 
 let todosUsuarios = [];
+let _contasCompartilhadas = new Set();   // ids cuja conta também acessa outro sistema
 let usuariosFiltrados = [];
 
 // ============================================================
@@ -11,6 +12,7 @@ let usuariosFiltrados = [];
 document.addEventListener('DOMContentLoaded', async () => {
     await verificarAutenticacaoAdmin();
     await carregarUsuarios();
+    await carregarSolicitacoesSenha();
     configurarBotaoSair();
 });
 
@@ -33,12 +35,17 @@ async function carregarUsuarios() {
     try {
         const { data, error } = await supabaseClient
             .from('perfis_usuarios')
-            .select('id, email, nome_completo, role, ativo, ultimo_acesso, created_at, motivo_desativacao, foto_url')
+            .select('id, email, nome_completo, role, ativo, ultimo_acesso, created_at, motivo_desativacao, foto_url, senha_temporaria, gere_senhas, whatsapp')
             .order('nome_completo', { ascending: true });
 
         if (error) throw error;
 
         todosUsuarios = data || [];
+
+        // Contas que também acessam outro sistema do login compartilhado
+        const { data: compart, error: errCompart } = await supabaseClient.rpc('admin_contas_compartilhadas');
+        if (errCompart) console.warn('Contas compartilhadas:', errCompart.message);
+        _contasCompartilhadas = new Set((compart || []).map(c => typeof c === 'string' ? c : Object.values(c)[0]));
         usuariosFiltrados = [...todosUsuarios];
 
         atualizarContadores();
@@ -49,7 +56,7 @@ async function carregarUsuarios() {
         console.error('Erro ao carregar usuários:', err);
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align:center; padding:40px; color:#dc2626;">
+                <td colspan="7" style="text-align:center; padding:40px; color:#dc2626;">
                     <i class="fas fa-exclamation-triangle" style="font-size:1.4rem;"></i>
                     <p style="margin-top:10px;">Erro ao carregar usuários. Tente novamente.</p>
                 </td>
@@ -81,7 +88,7 @@ function renderizarTabela() {
     if (usuariosFiltrados.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align:center; padding:40px; color:#9ca3af;">
+                <td colspan="7" style="text-align:center; padding:40px; color:#9ca3af;">
                     <i class="fas fa-users-slash" style="font-size:1.4rem;"></i>
                     <p style="margin-top:10px;">Nenhum usuário encontrado.</p>
                 </td>
@@ -102,7 +109,7 @@ function renderizarTabela() {
         const isAdminPrincipal = u.email === 'admin@sebrae.com.br';
 
         const fotoHtml = u.foto_url
-            ? `<img src="${u.foto_url}?t=${Date.now()}" alt=""
+            ? `<img src="${u.foto_url}${u.foto_url.includes('?') ? '&' : '?'}t=${Date.now()}" alt=""
                     data-fallback="avatar"
                     style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb;vertical-align:middle;margin-right:6px;">`
             : `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#e5e7eb;color:#9ca3af;font-size:0.8rem;vertical-align:middle;margin-right:6px;flex-shrink:0;"><i class="fas fa-user"></i></span>`;
@@ -141,8 +148,14 @@ function renderizarTabela() {
                 <td style="white-space:nowrap;">
                     ${fotoHtml}<strong>${escapeHtml(u.nome_completo)}</strong>
                     ${isAdminPrincipal ? ' <i class="fas fa-crown" style="color:#d97706; font-size:0.75rem;" title="Admin principal"></i>' : ''}
+                    ${(u.gere_senhas && u.role === 'admin' && u.ativo && !isAdminPrincipal) ? ' <span class="badge-gestor-senhas" title="Pode redefinir senhas e atender os pedidos do Esqueci minha senha"><i class="fas fa-key"></i> Gestor de senhas</span>' : ''}
+                    ${_contasCompartilhadas.has(u.id) ? ' <span class="badge-conta-compartilhada" title="Esta conta também acessa outro sistema que usa o mesmo login: a senha é a mesma nos dois"><i class="fas fa-link"></i> Outro sistema</span>' : ''}
+                    ${u.senha_temporaria ? ' <span class="badge-senha-temp" title="Ainda não trocou a senha temporária definida pelo administrador"><i class="fas fa-key"></i> Senha temporária</span>' : ''}
                 </td>
                 <td>${escapeHtml(u.email)}</td>
+                <td style="white-space:nowrap;">${u.whatsapp
+                    ? `<i class="fab fa-whatsapp" style="color:#16a34a;"></i> ${escapeHtml(u.whatsapp)}`
+                    : '<span style="color:#9ca3af; font-size:0.8rem;">Não informado</span>'}</td>
                 <td>${badgeRole}</td>
                 <td>${ultimoAcesso}</td>
                 <td>${formatarData(u.created_at)}</td>
@@ -168,7 +181,8 @@ function filtrarUsuarios() {
     usuariosFiltrados = todosUsuarios.filter(u => {
         const matchPesquisa = !pesquisa
             || u.nome_completo.toLowerCase().includes(pesquisa)
-            || u.email.toLowerCase().includes(pesquisa);
+            || u.email.toLowerCase().includes(pesquisa)
+            || (!!pesquisa.replace(/\D/g, '') && digitosTelefone(u.whatsapp).includes(pesquisa.replace(/\D/g, '')));
 
         const matchRole = !role || u.role === role;
 
@@ -191,6 +205,8 @@ function abrirModalNovoUsuario() {
     document.getElementById('usr-id').value    = '';
     document.getElementById('usr-nome').value  = '';
     document.getElementById('usr-email').value = '';
+    document.getElementById('usr-whatsapp').value = '';
+    document.getElementById('usr-whatsapp').dataset.salvo = '';
     document.getElementById('usr-senha').value = '';
     document.getElementById('usr-role').value  = 'visualizador';
     document.getElementById('usr-email').readOnly = false;
@@ -218,6 +234,8 @@ function abrirModalEditarUsuario(id) {
     document.getElementById('usr-id').value    = u.id;
     document.getElementById('usr-nome').value  = u.nome_completo;
     document.getElementById('usr-email').value = u.email;
+    document.getElementById('usr-whatsapp').value = u.whatsapp || '';
+    document.getElementById('usr-whatsapp').dataset.salvo = u.whatsapp || '';
     document.getElementById('usr-senha').value = '';
     document.getElementById('usr-role').value  = u.role;
     document.getElementById('usr-ativo').value = u.ativo ? 'true' : 'false';
@@ -231,6 +249,30 @@ function abrirModalEditarUsuario(id) {
     document.getElementById('campo-senha').style.display = 'none';
     document.getElementById('campo-senha-bloqueada').style.display = '';
 
+    // Redefinir senha: fechado ao abrir; não vale para a própria conta (Meu Perfil)
+    // Só o Administrador SEBRAE redefine (pode_gerir_senhas no banco)
+    const ehProprio = u.id === _perfilAtual?.id;
+    const gestor = podeGerirSenhas();
+    const alvoPrincipal = ehAdminPrincipal(u);
+    // Senha do principal: ninguém redefine pela tela (só o suporte, pelo banco)
+    const bloqueioPrincipal = gestor && alvoPrincipal && !ehProprio;
+    document.getElementById('redefinir-senha-box').hidden = ehProprio || !gestor || alvoPrincipal;
+    document.getElementById('redefinir-senha-propria').hidden = !(ehProprio && gestor);
+    const restrita = document.getElementById('redefinir-senha-restrita');
+    restrita.hidden = gestor && !bloqueioPrincipal;
+    restrita.textContent = bloqueioPrincipal
+        ? 'A senha do administrador principal só pode ser redefinida pelo suporte técnico.'
+        : 'A redefinição de senha é feita pelos gestores de senhas.';
+
+    // Chave "Pode cuidar de senhas": gestores a veem nos administradores (exceto o principal)
+    const campoGestor = document.getElementById('campo-gestor-senhas');
+    const chaveGestor = document.getElementById('usr-gestor-senhas');
+    campoGestor.hidden = !(gestor && u.role === 'admin' && !alvoPrincipal);
+    chaveGestor.checked = !!u.gere_senhas;
+    chaveGestor.dataset.original = u.gere_senhas ? '1' : '0';
+    document.getElementById('redefinir-senha-compartilhada').hidden = !_contasCompartilhadas.has(u.id);
+    cancelarRedefinirSenha();
+
     // Mostrar campos de status (exceto para o admin principal)
     const isAdminPrincipal = u.email === 'admin@sebrae.com.br';
     document.getElementById('campo-ativo').style.display  = isAdminPrincipal ? 'none' : '';
@@ -241,6 +283,101 @@ function abrirModalEditarUsuario(id) {
 
     esconderAlertaModal();
     document.getElementById('modal-usuario').style.display = 'flex';
+}
+
+// ============================================================
+// REDEFINIR SENHA (admin) — senha temporária, troca no 1º acesso
+// ============================================================
+function abrirRedefinirSenha() {
+    document.getElementById('btn-abrir-redefinir').hidden = true;
+    document.getElementById('redefinir-senha-campos').hidden = false;
+    document.getElementById('usr-senha-temp').focus();
+}
+
+function cancelarRedefinirSenha() {
+    document.getElementById('usr-senha-temp').value = '';
+    document.getElementById('usr-senha-temp-conf').value = '';
+    document.getElementById('redefinir-senha-campos').hidden = true;
+    document.getElementById('btn-abrir-redefinir').hidden = false;
+}
+
+async function confirmarRedefinirSenha() {
+    const id = document.getElementById('usr-id').value;
+    const senha = document.getElementById('usr-senha-temp').value;
+    const conf = document.getElementById('usr-senha-temp-conf').value;
+    const u = todosUsuarios.find(x => x.id === id);
+    if (!id || !u) return;
+
+    if (senha.length < 8) return mostrarAlertaModal('A senha temporária deve ter no mínimo 8 caracteres.', 'erro');
+    if (senha !== conf) return mostrarAlertaModal('A confirmação não confere com a senha temporária.', 'erro');
+
+    const btn = document.getElementById('btn-confirmar-redefinir');
+    btn.disabled = true;
+    try {
+        const { error } = await supabaseClient.rpc('admin_redefinir_senha', { p_usuario: id, p_nova_senha: senha });
+        if (error) throw error;
+        cancelarRedefinirSenha();
+        mostrarAlertaModal(`Senha temporária definida para ${u.nome_completo}. Informe-a ao usuário: no próximo acesso ele será obrigado a criar a própria senha.`, 'sucesso');
+        await carregarUsuarios();
+        await carregarSolicitacoesSenha();
+        void atualizarAvisoPedidosSenha();   // contador do menu
+    } catch (err) {
+        if (tratarErroDeSessao(err)) return;
+        mostrarAlertaModal(traduzirErro(err.message || String(err)), 'erro');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ============================================================
+// SOLICITAÇÕES DO "ESQUECI MINHA SENHA"
+// ============================================================
+async function carregarSolicitacoesSenha() {
+    const box = document.getElementById('solicitacoes-senha');
+    if (!box) return;
+    // Pedidos só para o Administrador SEBRAE (a RLS também só entrega a ele)
+    if (!podeGerirSenhas()) { box.hidden = true; return; }
+    const { data, error } = await supabaseClient
+        .from('solicitacoes_senha')
+        .select('id, perfil_id, email, criado_em')
+        .eq('status', 'pendente')
+        .order('criado_em', { ascending: true });
+    if (error) {
+        console.warn('Solicitações de senha:', error.message);
+        box.hidden = true;
+        return;
+    }
+    const pendentes = data || [];
+    box.hidden = pendentes.length === 0;
+    if (!pendentes.length) { box.innerHTML = ''; return; }
+
+    const itens = pendentes.map(sol => {
+        const u = todosUsuarios.find(x => x.id === sol.perfil_id);
+        const nome = u ? u.nome_completo : sol.email;
+        const botao = u
+            ? `<button type="button" class="btn-redefinir-senha" onclick="abrirRedefinicaoDaSolicitacao('${u.id}')"><i class="fas fa-key"></i> Redefinir senha</button>`
+            : '';
+        return `
+            <li>
+                <span><strong>${escapeHtml(nome)}</strong> — ${escapeHtml(sol.email)}
+                <small>pediu em ${formatarDataHora(sol.criado_em)}</small></span>
+                ${botao}
+            </li>`;
+    }).join('');
+
+    box.innerHTML = `
+        <div class="solicitacoes-senha-titulo">
+            <i class="fas fa-key"></i>
+            ${pendentes.length === 1 ? '1 solicitação' : pendentes.length + ' solicitações'} de redefinição de senha
+            <small>("Esqueci minha senha" na tela de login)</small>
+        </div>
+        <ul>${itens}</ul>`;
+}
+
+/** Da faixa de solicitações: abre o modal do usuário já com a redefinição aberta */
+function abrirRedefinicaoDaSolicitacao(id) {
+    abrirModalEditarUsuario(id);
+    abrirRedefinirSenha();
 }
 
 function fecharModalUsuario() {
@@ -261,12 +398,21 @@ async function salvarUsuario(event) {
     const role        = document.getElementById('usr-role').value;
     const ativoVal    = document.getElementById('usr-ativo').value;
     const motivo      = document.getElementById('usr-motivo').value.trim();
+    const campoWhats  = document.getElementById('usr-whatsapp');
 
     const modoEdicao = !!id;
 
     iniciarSpinner();
 
     try {
+        // Telefone com WhatsApp (opcional): confere antes de gravar qualquer coisa
+        const whats = await prepararWhatsAppUsuario(campoWhats.value, campoWhats.dataset.salvo);
+        if (whats.erro) {
+            mostrarAlertaModal(whats.erro, 'erro');
+            campoWhats.focus();
+            return;
+        }
+
         const { data: { session } } = await supabaseClient.auth.getSession();
 
         if (modoEdicao) {
@@ -276,6 +422,10 @@ async function salvarUsuario(event) {
                 role:          role,
                 updated_by:    session.user.id
             };
+            if (whats.alterado) {
+                atualizacao.whatsapp     = whats.whatsapp;
+                atualizacao.whatsapp_jid = whats.jid;
+            }
 
             const campoAtivo = document.getElementById('campo-ativo');
             if (campoAtivo.style.display !== 'none') {
@@ -294,25 +444,51 @@ async function salvarUsuario(event) {
 
             if (error) throw error;
 
-            mostrarAlertaModal('Usuário atualizado com sucesso!', 'sucesso');
+            // Delegação de "cuidar de senhas": só pela função do banco (gatilho barra o UPDATE direto)
+            const campoGestor = document.getElementById('campo-gestor-senhas');
+            const chaveGestor = document.getElementById('usr-gestor-senhas');
+            const querGestor = chaveGestor.checked && role === 'admin';
+            if (!campoGestor.hidden && (querGestor ? '1' : '0') !== chaveGestor.dataset.original) {
+                const { error: errGestor } = await supabaseClient
+                    .rpc('definir_gestor_senhas', { p_usuario: id, p_valor: querGestor });
+                if (errGestor) throw errGestor;
+            }
+
+            mostrarAlertaModal('Usuário atualizado com sucesso!' + whats.aviso, 'sucesso');
 
         } else {
             // ---- CRIAR ----
-            // 1. Criar conta no Auth via Admin API (necessita service_role)
-            // Como este é frontend com anon key, usamos a função RPC ou
-            // criamos com signUp e depois confirmamos via trigger.
-            // Aqui chamamos uma função RPC segura no banco:
-            const { data: novoUser, error: errAuth } = await supabaseClient
-                .rpc('admin_criar_usuario', {
-                    p_email:        email,
-                    p_senha:        senha,
-                    p_nome_completo: nomeCompleto,
-                    p_role:         role
+            // O login do Supabase é compartilhado com outros sistemas: se o
+            // e-mail já tem conta lá, o banco VINCULA essa conta (mesma senha
+            // para os dois) — o admin confirma antes, pois a senha digitada
+            // passa a valer também no outro sistema.
+            const { data: emOutroSistema, error: errCheck } = await supabaseClient
+                .rpc('admin_email_em_outro_sistema', { p_email: email });
+            if (errCheck) throw errCheck;
+
+            if (emOutroSistema && !podeGerirSenhas()) {
+                // Vincular troca a senha da conta existente: só o gestor
+                mostrarAlertaModal('Este e-mail já tem acesso a outro sistema; somente um gestor de senhas pode vincular essa conta.', 'erro');
+                return;
+            }
+
+            if (emOutroSistema) {
+                pararSpinner();
+                abrirModalConfirmacao({
+                    titulo: 'E-mail já usado em outro sistema',
+                    texto: `<strong>${escapeHtml(email)}</strong> já tem acesso a outro sistema que usa o mesmo login.<br>
+                        <span style="font-size:0.83rem;">A conta será <strong>vinculada</strong> ao Termos URC e a senha digitada
+                        passará a valer <strong>também no outro sistema</strong>. No primeiro acesso o usuário criará a nova senha,
+                        que valerá para os dois.</span>`,
+                    tipo: 'ativar',
+                    labelOk: 'Vincular conta',
+                    onConfirmar: () => criarUsuarioConfirmado({ email, senha, nomeCompleto, role, vinculada: true, whats })
                 });
+                return;
+            }
 
-            if (errAuth) throw errAuth;
-
-            mostrarAlertaModal('Usuário criado com sucesso!', 'sucesso');
+            await criarUsuarioConfirmado({ email, senha, nomeCompleto, role, vinculada: false, whats });
+            return;
         }
 
         await carregarUsuarios();
@@ -325,6 +501,73 @@ async function salvarUsuario(event) {
     } finally {
         pararSpinner();
     }
+}
+
+/** Cria (ou vincula, se o e-mail já tem conta em outro sistema) via RPC admin_criar_usuario */
+async function criarUsuarioConfirmado({ email, senha, nomeCompleto, role, vinculada, whats }) {
+    iniciarSpinner();
+    try {
+        const { data: novoId, error } = await supabaseClient.rpc('admin_criar_usuario', {
+            p_email:         email,
+            p_senha:         senha,
+            p_nome_completo: nomeCompleto,
+            p_role:          role
+        });
+        if (error) throw error;
+
+        // O telefone vai num UPDATE à parte (admin_criar_usuario não o recebe).
+        // Se falhar, o usuário já existe: avisa para completar pelo Editar.
+        let avisoWhats = whats?.aviso || '';
+        if (whats?.whatsapp && novoId) {
+            const { error: errWhats } = await supabaseClient
+                .from('perfis_usuarios')
+                .update({ whatsapp: whats.whatsapp, whatsapp_jid: whats.jid })
+                .eq('id', novoId);
+            if (errWhats) {
+                console.error('Erro ao gravar WhatsApp do novo usuário:', errWhats);
+                avisoWhats = ' Atenção: o telefone não foi salvo — informe-o novamente em Editar Usuário.';
+            }
+        }
+
+        mostrarAlertaModal((vinculada
+            ? 'Conta vinculada ao Termos URC. A senha digitada já vale também no outro sistema; no primeiro acesso o usuário criará a nova senha.'
+            : 'Usuário criado com sucesso! No primeiro acesso ele criará a própria senha.') + avisoWhats, 'sucesso');
+        await carregarUsuarios();
+        setTimeout(() => fecharModalUsuario(), vinculada ? 3500 : 1500);
+    } catch (err) {
+        if (tratarErroDeSessao(err)) return;
+        console.error('Erro ao criar usuário:', err);
+        mostrarAlertaModal(traduzirErro(err.message || err), 'erro');
+    } finally {
+        pararSpinner();
+    }
+}
+
+/**
+ * Telefone com WhatsApp do usuário (08/10/2026) — opcional. Confere o formato e,
+ * se mudou, pergunta à Evolution se o número tem WhatsApp: sem WhatsApp não
+ * grava; serviço fora do ar grava com aviso (decisão do desenvolvedor).
+ * Devolve { erro } ou { alterado, whatsapp, jid, aviso }.
+ */
+async function prepararWhatsAppUsuario(valor, salvo) {
+    const digitos = digitosTelefone(valor);
+    const base = { alterado: false, whatsapp: null, jid: null, aviso: '' };
+    if (digitos === digitosTelefone(salvo)) return base;
+    if (!digitos) return { ...base, alterado: true };
+    if (!telefoneValido(digitos)) {
+        return { erro: 'Telefone incompleto: informe o DDD e o número (10 ou 11 dígitos).' };
+    }
+    const whatsapp = formatarTelefoneParaCadastro(digitos);
+    const v = await verificarWhatsApp(whatsapp);
+    if (v.exists === false) {
+        return { erro: 'Este número não tem WhatsApp. Confira o DDD e o número.' };
+    }
+    return {
+        alterado: true,
+        whatsapp,
+        jid: v.exists === true ? (v.whatsapp || null) : null,
+        aviso: v.exists === true ? '' : ' Não foi possível confirmar agora se o telefone tem WhatsApp.'
+    };
 }
 
 // ============================================================
