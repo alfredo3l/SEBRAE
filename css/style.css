@@ -3491,3 +3491,91 @@ body.troca-senha-ativa {
     font-size: 0.7rem;
     font-weight: 600;
 }
+
+/* Gestão de Usuários: avatar com as iniciais quando não há foto */
+.avatar-iniciais-usuario {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+    margin-right: 6px;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+/* Excluir usuário (Gestão de Usuários) */
+.btn-excluir-usuario {
+    color: #dc2626 !important;
+}
+
+.excluir-usuario-alerta {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    text-align: left;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    margin: 4px 0 14px;
+}
+
+.excluir-usuario-alerta i {
+    margin-top: 2px;
+}
+
+.excluir-usuario-label {
+    display: block;
+    text-align: left;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.excluir-usuario-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+}
+
+.excluir-usuario-input:focus {
+    border-color: #dc2626;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+}
+
+.excluir-usuario-erro {
+    color: #b42318;
+    background: #fdecea;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    margin-bottom: 12px;
+    text-align: left;
+}
+
+#btn-excluir-usuario:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Botão "Excluir definitivamente": numa linha só, com o ícone junto do texto */
+#btn-excluir-usuario {
+    flex: 1.4;
+    white-space: nowrap;
+    padding: 10px 12px;
+}

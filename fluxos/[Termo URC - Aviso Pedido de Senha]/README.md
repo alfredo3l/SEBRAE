@@ -1,6 +1,6 @@
 # [Termo URC - Aviso Pedido de Senha]
 
-- **ID:** `fNRWBRfKLd1fbiEz` · **Status:** ativo · **Nós:** 8 (+1 sticky) · **Criado:** 08/10/2026
+- **ID:** `fNRWBRfKLd1fbiEz` · **Status:** ativo · **Nós:** 10 (+1 sticky) · **Criado:** 08/10/2026
 - **Webhook:** `POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-SENHA-PEDIDO`
 - **Pasta na instância:** SEBRAE (mover manualmente — a API do n8n desta instância recusa operações de pasta)
 
@@ -17,6 +17,7 @@ Webhook (POST /webhook/TERMOS-URC-SENHA-PEDIDO, responde pelo nó "Responde")
        ├─ true  → Envia aos gestores (Evolution: messages-api, instância SEBRAE) ─┐
        └─ false ─────────────────────────────────────────────────────────────┤
   → Resumo (Code: { ok, avisados, motivo })
+  → Monta log (Code) → Registra log (HTTP Request: RPC n8n_registrar_log, credencial "Acto")
   → Responde (Respond to Webhook: JSON)
 ```
 
@@ -29,6 +30,10 @@ Webhook (POST /webhook/TERMOS-URC-SENHA-PEDIDO, responde pelo nó "Responde")
 ## Proteção
 
 **1 aviso por pedido real.** A RPC só devolve gestores se existir pedido `pendente` desse e-mail criado nos últimos **15 min** e ainda **não avisado** (`solicitacoes_senha.notificado_em`), e já marca o aviso. Chamar o webhook à toa, ou repetir o pedido pendente, não gera mensagem — o webhook é público (a tela de login não tem sessão).
+
+## Log do sistema
+
+Desde 08/10/2026 cada execução com pedido/redefinição real grava um registro em `logs_sistema` (categoria **WhatsApp**, origem **n8n**) — ver `supabase_logs_sistema.sql` e a tela `logs.html`. A senha nunca vai para o log.
 
 ## Banco
 

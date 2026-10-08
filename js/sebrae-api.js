@@ -272,19 +272,36 @@ function mapearContatoParaTabela(record) {
  */
 async function atualizarContatoSebrae(contactId, campos) {
     const url = `${SEBRAE_PROXY}/api/sebrae/contact/${encodeURIComponent(contactId)}`;
-    const resp = await fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(campos)
-    });
+    let resp;
+    try {
+        resp = await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(campos)
+        });
+    } catch (e) {
+        registrarLogContatoFoco(false, contactId, campos, e?.message || 'erro de conexão');
+        throw e;
+    }
     if (resp.ok) {
+        registrarLogContatoFoco(true, contactId, campos);
         return { ok: true };
     }
     const body = await resp.json().catch(() => ({}));
     const err = new Error(body.error || body.body?.message || `Erro ${resp.status}`);
     err.status = resp.status;
     err.body = body;
+    registrarLogContatoFoco(false, contactId, campos, err.message);
     throw err;
+}
+
+/** Log do sistema: sincronização de telefone/e-mail com o Contact do FOCO */
+function registrarLogContatoFoco(ok, contactId, campos, erro) {
+    if (typeof registrarLog !== 'function') return;
+    const nomes = Object.keys(campos || {}).map(k => k === 'Phone' ? 'telefone' : k === 'Email' ? 'e-mail' : k).join(' e ');
+    void registrarLog(ok ? 'foco_contato_atualizado' : 'foco_contato_falha',
+        ok ? `Atualizou ${nomes} do contato no FOCO` : `FALHA ao atualizar ${nomes} do contato no FOCO`,
+        'foco_contact', contactId, { contact_id: contactId, campos, erro: erro || null });
 }
 
 /**

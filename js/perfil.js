@@ -164,6 +164,7 @@ async function alterarSenhaPerfil(event) {
 
         _limparCamposSenhaPerfil();
         mostrarAlertaPerfil('Senha alterada com sucesso!', 'sucesso');
+        if (typeof registrarLog === 'function') void registrarLog('senha_alterada', 'Alterou a própria senha (Meu Perfil)');
 
     } catch (err) {
         console.error('Erro ao alterar senha:', err);

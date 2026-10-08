@@ -66,6 +66,7 @@ async function abrirTermoPDF(cpf) {
     }
 
     window.open(data.signedUrl, '_blank');
+    void registrarLog('pdf_aberto', 'Abriu o PDF do termo', null, null, { path: nomeArquivo });
 }
 
 // ===== Estado da paginação da tabela principal =====
@@ -447,6 +448,7 @@ async function abrirPDFPorPath(path) {
         return;
     }
     window.open(data.signedUrl, '_blank');
+    void registrarLog('pdf_aberto', 'Abriu o PDF do termo', null, null, { path });
 }
 
 // ===== Autoria dos termos (06/10/2026) =====
@@ -589,23 +591,7 @@ async function carregarFotosAutores() {
     }
 }
 
-/** Iniciais para o avatar: primeiro e último nome; nome único → 2 primeiras letras */
-function iniciaisDoNome(nome) {
-    const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
-    if (!partes.length) return '?';
-    const ini = partes.length === 1
-        ? partes[0].slice(0, 2)
-        : partes[0][0] + partes[partes.length - 1][0];
-    return ini.toUpperCase();
-}
-
-/** Cor fixa por usuário (mesma pessoa, mesma cor em toda a lista) */
-const CORES_AVATAR_AUTOR = ['#0056a6', '#2e7d32', '#6a1b9a', '#c62828', '#00838f', '#ef6c00', '#4e342e', '#283593'];
-function corDoAutor(chave) {
-    let h = 0;
-    for (const ch of String(chave || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return CORES_AVATAR_AUTOR[h % CORES_AVATAR_AUTOR.length];
-}
+// iniciaisDoNome() e corDoAutor() ficam em js/auth.js (usadas também na Gestão de Usuários)
 
 /** Célula "Criado por": círculo com as iniciais; nome e e-mail ao passar o mouse */
 function celulaAutorDocumento(doc) {
@@ -1998,6 +1984,8 @@ async function executarBuscaParceiro() {
     try {
         const resultado = await buscarContatosSebrae(termo);
         const registros = resultado.records || [];
+        void registrarLog('busca_foco', `Buscou no FOCO: "${termo}" (${registros.length} resultado(s))`, null, null,
+            { termo, tipo: ehCPF ? 'cpf' : ehCNPJ ? 'cnpj' : ehTelefone ? 'telefone' : 'nome', resultados: registros.length });
 
         resultadosBusca = registros.map(mapearContatoParaTabela);
         _buscaRegistrosPorCPF = {};
@@ -2020,6 +2008,8 @@ async function executarBuscaParceiro() {
         }
     } catch (err) {
         console.error('Erro ao buscar na API SEBRAE:', err);
+        void registrarLog('busca_foco', `Buscou no FOCO: "${termo}" (erro na consulta)`, null, null,
+            { termo, resultados: null, erro: err?.message || String(err) });
         const vazioEl = document.getElementById('busca-vazio');
         if (vazioEl) {
             vazioEl.style.display = 'flex';

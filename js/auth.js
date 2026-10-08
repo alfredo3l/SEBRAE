@@ -198,13 +198,17 @@ function usuarioPodeEditar() {
  * Busca o perfil completo do usuário logado (com role).
  * Retorna null se não existir perfil cadastrado.
  */
+// true quando a última busca respondeu SEM erro e SEM perfil (não é falha de rede)
+let _perfilInexistente = false;
+
 async function buscarPerfilUsuario(userId) {
     const { data, error } = await supabaseClient
         .from('perfis_usuarios')
         .select('id, email, nome_completo, role, ativo, ultimo_acesso, foto_url, senha_temporaria, gere_senhas')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
+    _perfilInexistente = !error && !data;
     if (error) return null;
     return data;
 }
@@ -235,6 +239,17 @@ async function verificarAutenticacao() {
 
     const perfil = await buscarPerfilUsuario(session.user.id);
 
+    // Login sem cadastro no Termos URC (08/10/2026): o login do Supabase é
+    // compartilhado com outros sistemas, e um usuário excluído aqui mantém a
+    // conta de login. A RLS só mostra perfis ativos a não-admins, então um
+    // usuário inativo também cai aqui. Falha de rede não desloga.
+    if (_perfilInexistente) {
+        _logoutIntencional = true;
+        await supabaseClient.auth.signOut();
+        window.location.href = 'login?motivo=sem-acesso';
+        return null;
+    }
+
     if (perfil && !perfil.ativo) {
         _logoutIntencional = true; // o motivo aqui é "inativo", não sessão expirada
         await supabaseClient.auth.signOut();
@@ -253,6 +268,7 @@ async function verificarAutenticacao() {
 
     if (perfil) {
         void registrarUltimoAcessoThrottled();
+        registrarTelaAberta();   // log do sistema: 1 registro por tela aberta
         // O token foi aceito pelo servidor: libera nova tentativa de renovação no futuro
         try { sessionStorage.removeItem(_CHAVE_REFRESH_TENTADO); } catch (_) { }
     }
@@ -273,6 +289,9 @@ async function verificarAutenticacao() {
     if (perfil?.foto_url && typeof atualizarNavbarAvatar === 'function') {
         atualizarNavbarAvatar(perfil.foto_url);
     }
+
+    // Logs do sistema: item no menu só para o Administrador SEBRAE
+    if (perfil?.ativo && perfil?.role === 'admin' && ehAdminPrincipal(perfil)) inserirItemMenuLogs();
 
     // Salva cache no sessionStorage para preencher a navbar instantaneamente
     // nas próximas navegações, eliminando o flash de "Carregando..."
@@ -300,6 +319,28 @@ const EMAIL_GESTOR_SENHAS = 'admin@sebrae.com.br';
 function ehAdminPrincipal(perfil) {
     return (perfil?.email || '').toLowerCase() === EMAIL_GESTOR_SENHAS;
 }
+/**
+ * Avatar sem foto: iniciais (primeiro e último nome; nome único → 2 primeiras
+ * letras) num círculo com cor fixa por pessoa. Compartilhado pela coluna
+ * "Criado por" da lista e pela Gestão de Usuários — a mesma pessoa tem a
+ * mesma cor nas duas telas (chave = e-mail).
+ */
+function iniciaisDoNome(nome) {
+    const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+    if (!partes.length) return '?';
+    const ini = partes.length === 1
+        ? partes[0].slice(0, 2)
+        : partes[0][0] + partes[partes.length - 1][0];
+    return ini.toUpperCase();
+}
+
+const CORES_AVATAR_AUTOR = ['#0056a6', '#2e7d32', '#6a1b9a', '#c62828', '#00838f', '#ef6c00', '#4e342e', '#283593'];
+function corDoAutor(chave) {
+    let h = 0;
+    for (const ch of String(chave || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return CORES_AVATAR_AUTOR[h % CORES_AVATAR_AUTOR.length];
+}
+
 /**
  * Usuários ocultos (08/10/2026): a conta do desenvolvedor (marca
  * perfis_usuarios.oculto, só alterável pelo banco) só aparece para o
@@ -505,6 +546,9 @@ async function fazerLogin(email, senha) {
 async function fazerLogout() {
     _logoutIntencional = true; // não é sessão expirada: não avisar no login
 
+    // Log do sistema (no máximo 1,5 s de espera: sair nunca fica preso)
+    await Promise.race([registrarLog('logout', 'Saiu do sistema'), new Promise(r => setTimeout(r, 1500))]);
+
     // Limpa o cache da navbar antes de redirecionar
     try {
         sessionStorage.removeItem(_CACHE_NOME);
@@ -529,6 +573,61 @@ function configurarBotaoSair() {
             fazerLogout();
         });
     }
+}
+
+// ============================================================
+// LOGS DO SISTEMA (08/10/2026) — supabase_logs_sistema.sql
+// ============================================================
+// Alterações no banco são registradas por gatilhos; aqui ficam os eventos que
+// só a tela conhece (acessos e consultas). O banco aceita só as ações da lista
+// branca de registrar_log_tela e sempre em nome de quem está logado.
+
+/** Registra um evento da tela no log. Nunca lança nem trava a tela. */
+function registrarLog(acao, descricao, entidade = null, entidadeId = null, dados = null) {
+    try {
+        return Promise.resolve(supabaseClient.rpc('registrar_log_tela', {
+            p_acao: acao, p_descricao: descricao,
+            p_entidade: entidade, p_entidade_id: entidadeId, p_dados: dados
+        })).then(({ error } = {}) => { if (error) console.warn('Log do sistema:', error.message); },
+                 e => console.warn('Log do sistema:', e?.message || e));
+    } catch (e) {
+        return Promise.resolve();
+    }
+}
+
+const TELAS_LOG = {
+    '': 'Lista de termos', index: 'Lista de termos', detalhe: 'Detalhe do cliente',
+    documento: 'Documento', acompanhamento: 'Acompanhamento do cliente',
+    usuarios: 'Gestão de Usuários', logs: 'Logs do sistema'
+};
+let _telaLogRegistrada = false;
+
+/** "Abriu a tela X" — uma vez por página (a Gestão de Usuários confere o login 2 vezes) */
+function registrarTelaAberta() {
+    if (_telaLogRegistrada) return;
+    _telaLogRegistrada = true;
+    const pagina = window.location.pathname.split('/').pop().replace(/\.html$/, '');
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    const tipos = params.get('tipos') || params.get('tipo');
+    const dados = { tela: pagina || 'index' };
+    if (tipos) dados.tipos = tipos;
+    if (params.get('doc')) dados.doc = params.get('doc');
+    if (params.get('reenvio')) dados.reenvio = params.get('reenvio');
+    const descricao = `Abriu a tela ${TELAS_LOG[pagina] || pagina}` + (tipos ? ` (${tipos.split(',').join(', ')})` : '');
+    void registrarLog('tela_aberta', descricao, id ? 'parceiros' : null, id, dados);
+}
+
+/** Item "Logs do sistema" na seção Administração do menu (⋮) */
+function inserirItemMenuLogs() {
+    const secao = document.querySelector('.navbar-dropdown-section.link-usuarios');
+    if (!secao || secao.querySelector('.item-logs')) return;
+    const item = document.createElement('a');
+    item.href = 'logs';
+    item.className = 'navbar-dropdown-item item-admin item-logs';
+    item.innerHTML = '<i class="fas fa-clipboard-list"></i> Logs do sistema';
+    if (window.location.pathname.split('/').pop().replace(/\.html$/, '') === 'logs') item.style.background = '#fffbeb';
+    secao.appendChild(item);
 }
 
 /**

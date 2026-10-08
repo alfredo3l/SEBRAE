@@ -16,13 +16,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     configurarBotaoSair();
 });
 
-// Substitui mini avatares quebrados pelo placeholder
+/** Círculo com as iniciais do usuário (sem foto, ou quando a foto não carrega) */
+function avatarIniciaisHtml(nome, chave) {
+    return `<span class="avatar-iniciais-usuario" style="background:${corDoAutor(chave || nome)}" aria-hidden="true">${escapeHtml(iniciaisDoNome(nome || chave))}</span>`;
+}
+
+// Mini avatar quebrado (foto apagada, sem rede): troca pelas iniciais
 document.addEventListener('error', function (e) {
     if (e.target.tagName === 'IMG' && e.target.dataset.fallback === 'avatar') {
-        const placeholder = document.createElement('span');
-        placeholder.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#e5e7eb;color:#9ca3af;font-size:0.8rem;vertical-align:middle;margin-right:6px;flex-shrink:0;';
-        placeholder.innerHTML = '<i class="fas fa-user"></i>';
-        e.target.parentNode?.replaceChild(placeholder, e.target);
+        const tmp = document.createElement('span');
+        tmp.innerHTML = avatarIniciaisHtml(e.target.dataset.nome, e.target.dataset.chave);
+        e.target.parentNode?.replaceChild(tmp.firstElementChild, e.target);
     }
 }, true);
 
@@ -112,15 +116,22 @@ function renderizarTabela() {
 
         const fotoHtml = u.foto_url
             ? `<img src="${u.foto_url}${u.foto_url.includes('?') ? '&' : '?'}t=${Date.now()}" alt=""
-                    data-fallback="avatar"
+                    data-fallback="avatar" data-nome="${escapeHtml(u.nome_completo)}" data-chave="${escapeHtml(u.email)}"
                     style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #e5e7eb;vertical-align:middle;margin-right:6px;">`
-            : `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#e5e7eb;color:#9ca3af;font-size:0.8rem;vertical-align:middle;margin-right:6px;flex-shrink:0;"><i class="fas fa-user"></i></span>`;
+            : avatarIniciaisHtml(u.nome_completo, u.email);
 
         const btnEditar = `
             <button class="btn-acao editar" title="Editar usuário"
                     onclick="abrirModalEditarUsuario('${u.id}')">
                 <i class="fas fa-edit"></i>
             </button>`;
+
+        // Excluir: só gestores de senhas; nunca o principal nem o próprio usuário
+        const btnExcluir = (podeGerirSenhas() && !isAdminPrincipal && u.id !== _perfilAtual?.id) ? `
+            <button class="btn-acao btn-excluir-usuario" title="Excluir usuário"
+                    onclick="abrirModalExcluirUsuario('${u.id}')">
+                <i class="fas fa-trash-alt"></i>
+            </button>` : '';
 
         const btnFoto = `
             <button class="btn-acao" title="Alterar foto do usuário" style="color:#7c3aed;"
@@ -164,6 +175,7 @@ function renderizarTabela() {
                         ${btnEditar}
                         ${btnFoto}
                         ${toggleStatus}
+                        ${btnExcluir}
                     </div>
                 </td>
             </tr>`;
@@ -424,6 +436,60 @@ async function carregarSolicitacoesSenha() {
 function abrirRedefinicaoDaSolicitacao(id) {
     abrirModalEditarUsuario(id);
     abrirRedefinirSenha();
+}
+
+// ============================================================
+// EXCLUIR USUÁRIO (só gestores de senhas) — supabase_excluir_usuario.sql
+// Apaga só o cadastro do Termos URC; a conta de login (compartilhada com
+// outros sistemas) fica — e o auth.js barra quem entra sem cadastro.
+// ============================================================
+let _usuarioExcluir = null;
+
+function abrirModalExcluirUsuario(id) {
+    const u = todosUsuarios.find(x => x.id === id);
+    if (!u || !podeGerirSenhas()) return;
+    _usuarioExcluir = u;
+    document.getElementById('excluir-usuario-nome').textContent = u.nome_completo;
+    document.getElementById('excluir-usuario-email').textContent = u.email;
+    const campo = document.getElementById('excluir-usuario-confirmacao');
+    campo.value = '';
+    campo.placeholder = u.email;
+    document.getElementById('excluir-usuario-erro').hidden = true;
+    document.getElementById('btn-excluir-usuario').disabled = true;
+    document.getElementById('modal-excluir-usuario').style.display = 'flex';
+    setTimeout(() => campo.focus(), 50);
+}
+
+function fecharModalExcluirUsuario() {
+    document.getElementById('modal-excluir-usuario').style.display = 'none';
+    _usuarioExcluir = null;
+}
+
+/** O botão só libera com o e-mail exato (sem diferenciar maiúsculas) */
+function validarConfirmacaoExclusao() {
+    const digitado = document.getElementById('excluir-usuario-confirmacao').value.trim().toLowerCase();
+    document.getElementById('btn-excluir-usuario').disabled =
+        !_usuarioExcluir || digitado !== String(_usuarioExcluir.email).toLowerCase();
+}
+
+async function confirmarExclusaoUsuario() {
+    const u = _usuarioExcluir;
+    const btn = document.getElementById('btn-excluir-usuario');
+    const erro = document.getElementById('excluir-usuario-erro');
+    if (!u || btn.disabled) return;
+    btn.disabled = true;
+    erro.hidden = true;
+    try {
+        const { error } = await supabaseClient.rpc('admin_excluir_usuario', { p_usuario: u.id });
+        if (error) throw error;
+        fecharModalExcluirUsuario();
+        await carregarUsuarios();
+    } catch (err) {
+        if (tratarErroDeSessao(err)) return;
+        erro.textContent = traduzirErro(err.message || String(err));
+        erro.hidden = false;
+        validarConfirmacaoExclusao();
+    }
 }
 
 function fecharModalUsuario() {

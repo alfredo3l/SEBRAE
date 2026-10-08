@@ -747,6 +747,39 @@
     </div>
 
     <!-- ========== MODAL DE CONFIRMAÇÃO ========== -->
+    <!-- Excluir usuário (só gestores de senhas): irreversível, exige digitar o e-mail -->
+    <div class="modal-overlay" id="modal-excluir-usuario" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="excluir-usuario-titulo">
+        <div class="modal-confirm-card">
+            <div class="modal-confirm-icon desativar">
+                <i class="fas fa-trash-alt"></i>
+            </div>
+            <h3 class="modal-confirm-titulo" id="excluir-usuario-titulo">Excluir usuário</h3>
+            <p class="modal-confirm-texto">
+                Deseja realmente excluir <strong id="excluir-usuario-nome"></strong>
+                (<span id="excluir-usuario-email"></span>)?
+            </p>
+            <div class="excluir-usuario-alerta">
+                <i class="fas fa-triangle-exclamation"></i>
+                <span><strong>Esta ação é irreversível.</strong> O usuário perde o acesso ao Termos URC e o
+                cadastro não pode ser recuperado. Os termos que ele gerou continuam no sistema.</span>
+            </div>
+            <label class="excluir-usuario-label" for="excluir-usuario-confirmacao">
+                Para confirmar, digite o e-mail do usuário:
+            </label>
+            <input type="text" id="excluir-usuario-confirmacao" class="excluir-usuario-input"
+                   autocomplete="off" spellcheck="false" oninput="validarConfirmacaoExclusao()">
+            <div class="excluir-usuario-erro" id="excluir-usuario-erro" hidden></div>
+            <div class="modal-confirm-acoes">
+                <button type="button" class="btn-confirm-cancelar" onclick="fecharModalExcluirUsuario()">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn-confirm-ok desativar" id="btn-excluir-usuario" disabled onclick="confirmarExclusaoUsuario()">
+                    <i class="fas fa-trash-alt"></i> <span>Excluir definitivamente</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="modal-confirmacao" style="display:none;">
         <div class="modal-confirm-card">
             <div class="modal-confirm-icon" id="confirm-icon-wrap">

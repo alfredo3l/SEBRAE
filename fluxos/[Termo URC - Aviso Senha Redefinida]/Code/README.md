@@ -7,3 +7,4 @@ Histórico de versões do código dos nós Code deste fluxo. Convenção complet
 |---|---|---|---|---|
 | `Monta mensagens` | JavaScript | `jsCode` | v002 | 2026-10-08 |
 | `Resumo` | JavaScript | `jsCode` | v001 | 2026-10-08 |
+| `Monta log` | JavaScript | `jsCode` | v001 | 2026-10-08 |

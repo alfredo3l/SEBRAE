@@ -1,6 +1,6 @@
 # [Termo URC - Aviso Senha Redefinida]
 
-- **ID:** `sXKOKjNsKLyMGp3U` · **Status:** ativo · **Nós:** 8 (+1 sticky) · **Criado:** 08/10/2026
+- **ID:** `sXKOKjNsKLyMGp3U` · **Status:** ativo · **Nós:** 10 (+1 sticky) · **Criado:** 08/10/2026
 - **Webhook:** `POST https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-SENHA-REDEFINIDA`
 - **Pasta na instância:** SEBRAE (mover manualmente — a API do n8n desta instância recusa operações de pasta)
 
@@ -17,6 +17,7 @@ Webhook (POST /webhook/TERMOS-URC-SENHA-REDEFINIDA, responde pelo nó "Responde"
        ├─ true  → Envia mensagens (Evolution: messages-api, instância SEBRAE) ─┐
        └─ false ─────────────────────────────────────────────────────────┤
   → Resumo (Code: { ok, usuario_avisado, gestores_avisados, motivo })
+  → Monta log (Code) → Registra log (HTTP Request: RPC n8n_registrar_log, credencial "Acto")
   → Responde (Respond to Webhook: JSON)
 ```
 
@@ -29,6 +30,10 @@ Webhook (POST /webhook/TERMOS-URC-SENHA-REDEFINIDA, responde pelo nó "Responde"
 ## Proteção
 
 **Ninguém manda senha falsa.** O nó repassa o JWT do gestor e chama a RPC `aviso_senha_redefinida`, que exige `pode_gerir_senhas()`, que **esse** gestor tenha redefinido a senha desse usuário nos últimos **15 min** (`updated_by`/`updated_at` + `senha_temporaria`) e que a senha recebida seja **exatamente** a gravada (bcrypt). Sem isso, nada é enviado. **Execuções com sucesso não são salvas** (`saveDataSuccessExecution: none`) para a senha não ficar no histórico do n8n; execuções com erro continuam salvas.
+
+## Log do sistema
+
+Desde 08/10/2026 cada execução com pedido/redefinição real grava um registro em `logs_sistema` (categoria **WhatsApp**, origem **n8n**) — ver `supabase_logs_sistema.sql` e a tela `logs.html`. A senha nunca vai para o log.
 
 ## Banco
 

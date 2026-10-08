@@ -421,7 +421,9 @@
 
             msg.textContent = motivo === 'inativo'
                 ? 'Seu acesso está inativo. Procure um administrador do sistema.'
-                : 'Sua sessão expirou. Entre novamente para continuar.';
+                : motivo === 'sem-acesso'
+                    ? 'Seu usuário não tem acesso ativo ao Termos URC. Procure um administrador do sistema.'
+                    : 'Sua sessão expirou. Entre novamente para continuar.';
             div.classList.add('show');
         })();
 
@@ -552,6 +554,14 @@
                 if (error) {
                     throw error;
                 }
+
+                // Log do sistema (no máximo 2 s de espera; falha não impede a entrada)
+                try {
+                    await Promise.race([
+                        Promise.resolve(supabaseClient.rpc('registrar_log_tela', { p_acao: 'login', p_descricao: 'Entrou no sistema' })),
+                        new Promise(r => setTimeout(r, 2000))
+                    ]);
+                } catch (_) { }
 
                 // Login com sucesso - zera as travas de sessão e volta para onde o usuário estava
                 try {
