@@ -21,7 +21,8 @@ function escAcomp(v) {
  * de documentos com tipo != termo-lgpd, mais recentes primeiro.
  */
 function montarDocsAcompanhamento(p) {
-    const docs = (p.documentos || []).slice()
+    // Termos de usuário oculto (conta do desenvolvedor) somem para os demais
+    const docs = (p.documentos || []).filter(d => !usuarioOcultoParaMim(d.criado_por)).slice()
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // O registro em `documentos` é a fonte de cada termo, LGPD incluído: dele
@@ -339,11 +340,12 @@ async function inicializarAcompanhamento() {
         return;
     }
 
-    const { data: parceiro, error } = await supabaseClient
-        .from('parceiros')
-        .select('*, documentos(*)')
-        .eq('id', id)
-        .single();
+    const [{ data: parceiro, error }] = await Promise.all([
+        supabaseClient.from('parceiros').select('*, documentos(*)').eq('id', id).single(),
+        carregarUsuariosOcultos()
+    ]);
+    // Quem vê os ocultos depende do perfil: espera o login (app.js) antes de montar
+    if (typeof esperarPerfilDaLista === 'function') await esperarPerfilDaLista();
 
     if (error || !parceiro) {
         if (tratarErroDeSessao(error)) return;

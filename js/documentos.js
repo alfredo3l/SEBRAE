@@ -766,8 +766,15 @@ async function carregarDocumentosExistentes(docId) {
         const { data, error } = await query;
         if (error || !data || data.length === 0) return achados;
 
+        // Rascunho de usuário oculto (conta do desenvolvedor) não é retomado por outros
+        if (!docId) {
+            await carregarUsuariosOcultos();
+            if (typeof esperarPerfilDaLista === 'function') await esperarPerfilDaLista();
+        }
+
         // Ordenado do mais recente para o mais antigo: fica o primeiro de cada tipo
         data.forEach(registro => {
+            if (!docId && usuarioOcultoParaMim(registro.criado_por)) return;
             const slug = registro.tipo_documento;
             if (!_docTipos.includes(slug) || achados[slug]) return;
             achados[slug] = registro;

@@ -231,6 +231,8 @@ async function salvarWhatsAppPerfil(event) {
 
         campo.value = data || '';
         campo.dataset.salvo = data || '';
+        // Na Gestão de Usuários, atualiza a tabela (coluna WhatsApp e envio de mensagem)
+        if (typeof carregarUsuarios === 'function') void carregarUsuarios();
         mostrarAlertaPerfil(
             (data ? 'Telefone com WhatsApp salvo.' : 'Telefone removido.') + aviso,
             'sucesso');

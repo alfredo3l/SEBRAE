@@ -35,12 +35,14 @@ async function carregarUsuarios() {
     try {
         const { data, error } = await supabaseClient
             .from('perfis_usuarios')
-            .select('id, email, nome_completo, role, ativo, ultimo_acesso, created_at, motivo_desativacao, foto_url, senha_temporaria, gere_senhas, whatsapp')
+            .select('id, email, nome_completo, role, ativo, ultimo_acesso, created_at, motivo_desativacao, foto_url, senha_temporaria, gere_senhas, whatsapp, oculto')
             .order('nome_completo', { ascending: true });
 
         if (error) throw error;
 
-        todosUsuarios = data || [];
+        // Usuário oculto (conta do desenvolvedor) só aparece para o administrador
+        // principal — sai da lista e dos contadores para os demais
+        todosUsuarios = (data || []).filter(u => !u.oculto || veUsuariosOcultos());
 
         // Contas que também acessam outro sistema do login compartilhado
         const { data: compart, error: errCompart } = await supabaseClient.rpc('admin_contas_compartilhadas');
@@ -153,9 +155,7 @@ function renderizarTabela() {
                     ${u.senha_temporaria ? ' <span class="badge-senha-temp" title="Ainda não trocou a senha temporária definida pelo administrador"><i class="fas fa-key"></i> Senha temporária</span>' : ''}
                 </td>
                 <td>${escapeHtml(u.email)}</td>
-                <td style="white-space:nowrap;">${u.whatsapp
-                    ? `<i class="fab fa-whatsapp" style="color:#16a34a;"></i> ${escapeHtml(u.whatsapp)}`
-                    : '<span style="color:#9ca3af; font-size:0.8rem;">Não informado</span>'}</td>
+                <td style="white-space:nowrap;">${celulaWhatsAppUsuario(u)}</td>
                 <td>${badgeRole}</td>
                 <td>${ultimoAcesso}</td>
                 <td>${formatarData(u.created_at)}</td>
@@ -168,6 +168,19 @@ function renderizarTabela() {
                 </td>
             </tr>`;
     }).join('');
+}
+
+/**
+ * Célula WhatsApp da tabela. Para o administrador, o número de usuário ATIVO
+ * (que não seja ele mesmo) vira botão que abre o envio de mensagem (08/10/2026).
+ */
+function celulaWhatsAppUsuario(u) {
+    if (!u.whatsapp) return '<span style="color:#9ca3af; font-size:0.8rem;">Não informado</span>';
+    const numero = `<i class="fab fa-whatsapp" style="color:#16a34a;"></i> ${escapeHtml(u.whatsapp)}`;
+    const podeEnviar = _perfilAtual?.role === 'admin' && _perfilAtual?.ativo && u.ativo && u.id !== _perfilAtual?.id;
+    if (!podeEnviar) return numero;
+    return `<button type="button" class="link-whatsapp" title="Enviar mensagem pelo WhatsApp para ${escapeHtml(u.nome_completo)}"
+                onclick="abrirMensagemWhatsApp('${u.id}')">${numero}</button>`;
 }
 
 // ============================================================
@@ -301,6 +314,31 @@ function cancelarRedefinirSenha() {
     document.getElementById('btn-abrir-redefinir').hidden = false;
 }
 
+// Avisa pelo WhatsApp o usuário (com a senha temporária) e os demais gestores
+// (fluxo [Termo URC - Aviso Senha Redefinida]). O fluxo confere no banco, com o
+// token de quem redefiniu, que a senha é a gravada. Nunca lança.
+const WEBHOOK_AVISO_SENHA_REDEFINIDA = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-SENHA-REDEFINIDA';
+async function avisarSenhaRedefinida(usuarioId, senha) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session?.access_token) return null;
+        const resp = await fetch(WEBHOOK_AVISO_SENHA_REDEFINIDA, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario_id: usuarioId, senha, token: session.access_token }),
+            signal: ctrl.signal
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch (e) {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function confirmarRedefinirSenha() {
     const id = document.getElementById('usr-id').value;
     const senha = document.getElementById('usr-senha-temp').value;
@@ -317,7 +355,15 @@ async function confirmarRedefinirSenha() {
         const { error } = await supabaseClient.rpc('admin_redefinir_senha', { p_usuario: id, p_nova_senha: senha });
         if (error) throw error;
         cancelarRedefinirSenha();
-        mostrarAlertaModal(`Senha temporária definida para ${u.nome_completo}. Informe-a ao usuário: no próximo acesso ele será obrigado a criar a própria senha.`, 'sucesso');
+        mostrarAlertaModal(`Senha temporária definida para ${u.nome_completo}. Avisando pelo WhatsApp…`, 'sucesso');
+        const aviso = await avisarSenhaRedefinida(id, senha);
+        let msg = aviso?.usuario_avisado
+            ? `Senha temporária definida para ${u.nome_completo}. Também enviamos uma mensagem no WhatsApp do usuário com a senha temporária; no próximo acesso ele será obrigado a criar a própria senha.`
+            : `Senha temporária definida para ${u.nome_completo}. Informe-a ao usuário: no próximo acesso ele será obrigado a criar a própria senha.`;
+        if (aviso?.gestores_avisados > 0) {
+            msg += ` Os demais gestores de senhas também foram avisados pelo WhatsApp.`;
+        }
+        mostrarAlertaModal(msg, 'sucesso');
         await carregarUsuarios();
         await carregarSolicitacoesSenha();
         void atualizarAvisoPedidosSenha();   // contador do menu
@@ -569,6 +615,128 @@ async function prepararWhatsAppUsuario(valor, salvo) {
         aviso: v.exists === true ? '' : ' Não foi possível confirmar agora se o telefone tem WhatsApp.'
     };
 }
+
+// ============================================================
+// MENSAGEM PELO WHATSAPP (admin → usuário, 08/10/2026)
+// ============================================================
+// Fluxo [Termo URC - Mensagem ao Usuario]: o n8n chama preparar_mensagem_usuario
+// com o token de quem envia (o banco confere tudo e grava o histórico) e manda
+// pela instância SEBRAE com o nome e o WhatsApp do administrador no rodapé.
+const WEBHOOK_MENSAGEM_USUARIO = 'https://n8n.alfredooliveira.com.br/webhook/TERMOS-URC-MENSAGEM-USUARIO';
+const LIMITE_MENSAGEM_WHATS = 1000;
+let _msgWhatsDestino = null;
+
+function meuPerfilNaLista() {
+    return todosUsuarios.find(x => x.id === _perfilAtual?.id) || null;
+}
+
+function abrirMensagemWhatsApp(id) {
+    const u = todosUsuarios.find(x => x.id === id);
+    if (!u || !u.whatsapp) return;
+    _msgWhatsDestino = u;
+    const eu = meuPerfilNaLista();
+    const semNumeroProprio = !eu?.whatsapp;
+
+    document.getElementById('msg-whats-dest-nome').textContent = u.nome_completo;
+    document.getElementById('msg-whats-dest-numero').textContent = `WhatsApp ${u.whatsapp}`;
+    document.getElementById('msg-whats-bloqueio').hidden = !semNumeroProprio;
+    document.getElementById('form-msg-whats').hidden = semNumeroProprio;
+    document.getElementById('msg-whats-texto').value = '';
+    document.getElementById('msg-whats-rodape').textContent = semNumeroProprio ? '' :
+        `A mensagem sai assim:\nOlá, ${u.nome_completo}!\n(seu texto)\n— ${eu.nome_completo}, administrador do TERMOS URC\nWhatsApp: ${eu.whatsapp}`;
+    const btn = document.getElementById('btn-enviar-msg-whats');
+    btn.disabled = false;
+    document.getElementById('txt-enviar-msg-whats').textContent = 'Enviar';
+    esconderAlertaMensagem();
+    atualizarContadorMensagem();
+    document.getElementById('modal-mensagem-whats').style.display = 'flex';
+    if (!semNumeroProprio) document.getElementById('msg-whats-texto').focus();
+}
+
+function fecharMensagemWhatsApp() {
+    document.getElementById('modal-mensagem-whats').style.display = 'none';
+    _msgWhatsDestino = null;
+}
+
+function irParaMeuPerfilWhatsApp() {
+    fecharMensagemWhatsApp();
+    abrirModalPerfil().then(() => document.getElementById('perfil-whatsapp')?.focus());
+}
+
+function atualizarContadorMensagem() {
+    const n = document.getElementById('msg-whats-texto').value.length;
+    const el = document.getElementById('msg-whats-contador');
+    el.textContent = `${n.toLocaleString('pt-BR')} / ${LIMITE_MENSAGEM_WHATS.toLocaleString('pt-BR')}`;
+    el.classList.toggle('limite', n >= LIMITE_MENSAGEM_WHATS);
+}
+
+function mostrarAlertaMensagem(msg, tipo) {
+    const el = document.getElementById('alerta-msg-whats');
+    document.getElementById('alerta-msg-whats-msg').textContent = msg;
+    el.className = `alert-inline ${tipo}`;
+    el.style.display = 'flex';
+}
+
+function esconderAlertaMensagem() {
+    document.getElementById('alerta-msg-whats').style.display = 'none';
+}
+
+async function enviarMensagemWhatsApp(event) {
+    if (event) event.preventDefault();
+    const u = _msgWhatsDestino;
+    if (!u) return;
+    const texto = document.getElementById('msg-whats-texto').value.trim();
+    if (!texto) {
+        mostrarAlertaMensagem('Escreva a mensagem.', 'erro');
+        document.getElementById('msg-whats-texto').focus();
+        return;
+    }
+    if (texto.length > LIMITE_MENSAGEM_WHATS) {
+        mostrarAlertaMensagem('A mensagem passa de 1.000 caracteres.', 'erro');
+        return;
+    }
+
+    const btn = document.getElementById('btn-enviar-msg-whats');
+    btn.disabled = true;
+    document.getElementById('txt-enviar-msg-whats').textContent = 'Enviando…';
+    esconderAlertaMensagem();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session?.access_token) {
+            mostrarAlertaMensagem('Sua sessão expirou. Entre novamente para enviar.', 'erro');
+            return;
+        }
+        const resp = await fetch(WEBHOOK_MENSAGEM_USUARIO, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destinatario_id: u.id, texto, token: session.access_token }),
+            signal: ctrl.signal
+        });
+        const r = resp.ok ? await resp.json() : null;
+        if (r?.enviado) {
+            mostrarAlertaMensagem(`Mensagem enviada para o WhatsApp de ${u.nome_completo}.`, 'sucesso');
+            document.getElementById('form-msg-whats').hidden = true;
+            setTimeout(() => { if (_msgWhatsDestino === u) fecharMensagemWhatsApp(); }, 2500);
+            return;
+        }
+        const motivo = r?.motivo || '';
+        mostrarAlertaMensagem(/JWT|jwt|token/.test(motivo)
+            ? 'Sua sessão expirou. Recarregue a página e tente novamente.'
+            : `Não foi possível enviar: ${motivo || 'serviço de mensagens indisponível'}.`, 'erro');
+    } catch (e) {
+        mostrarAlertaMensagem('Não foi possível enviar: serviço de mensagens indisponível. Tente novamente.', 'erro');
+    } finally {
+        clearTimeout(timer);
+        btn.disabled = false;
+        document.getElementById('txt-enviar-msg-whats').textContent = 'Enviar';
+    }
+}
+
+document.getElementById('modal-mensagem-whats')?.addEventListener('click', function (e) {
+    if (e.target === this) fecharMensagemWhatsApp();
+});
 
 // ============================================================
 // MODAL DE CONFIRMAÇÃO CUSTOMIZADO

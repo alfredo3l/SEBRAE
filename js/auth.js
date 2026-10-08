@@ -300,6 +300,43 @@ const EMAIL_GESTOR_SENHAS = 'admin@sebrae.com.br';
 function ehAdminPrincipal(perfil) {
     return (perfil?.email || '').toLowerCase() === EMAIL_GESTOR_SENHAS;
 }
+/**
+ * Usuários ocultos (08/10/2026): a conta do desenvolvedor (marca
+ * perfis_usuarios.oculto, só alterável pelo banco) só aparece para o
+ * administrador principal e para ela mesma. Para os demais somem a linha na
+ * Gestão de Usuários, a opção no filtro "Usuário", os termos que ela gerar
+ * e a autoria. Decisão do desenvolvedor: ocultação só de tela.
+ */
+let _usuariosOcultos = null;   // Set de ids (null = ainda não carregado)
+
+async function carregarUsuariosOcultos() {
+    if (_usuariosOcultos) return _usuariosOcultos;
+    try {
+        const { data, error } = await supabaseClient
+            .from('perfis_usuarios')
+            .select('id')
+            .eq('oculto', true);
+        if (error) throw error;
+        _usuariosOcultos = new Set((data || []).map(u => u.id));
+    } catch (e) {
+        console.warn('Usuários ocultos:', e?.message || e);
+        _usuariosOcultos = new Set();
+    }
+    return _usuariosOcultos;
+}
+
+/** Quem está logado vê os usuários ocultos? (só o administrador principal) */
+function veUsuariosOcultos() {
+    return _perfilAtual?.role === 'admin' && _perfilAtual?.ativo === true && ehAdminPrincipal(_perfilAtual);
+}
+
+/** Este autor/usuário deve sumir para quem está logado? (ele mesmo sempre se vê) */
+function usuarioOcultoParaMim(id) {
+    if (!id || !_usuariosOcultos || veUsuariosOcultos()) return false;
+    if (id === _perfilAtual?.id) return false;
+    return _usuariosOcultos.has(id);
+}
+
 function podeGerirSenhas() {
     return _perfilAtual?.role === 'admin' && _perfilAtual?.ativo === true
         && (ehAdminPrincipal(_perfilAtual) || _perfilAtual?.gere_senhas === true);

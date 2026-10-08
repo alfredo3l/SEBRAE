@@ -243,6 +243,7 @@ async function carregarParceiros() {
     document.getElementById('pagination-parceiros') && (document.getElementById('pagination-parceiros').innerHTML = '');
 
     const promessaFotos = carregarFotosAutores();   // em paralelo com a lista
+    const promessaOcultos = carregarUsuariosOcultos();
     const { data, error } = await supabaseClient
         .from('parceiros')
         .select('*, documentos(*)')
@@ -260,6 +261,7 @@ async function carregarParceiros() {
     // termos): sem esperar, o operador veria por um instante os de todos
     await esperarPerfilDaLista();
     await promessaFotos;
+    await promessaOcultos;
 
     dadosParceiros = montarLinhasDocumentos(data);
     aplicarFiltrosParceiros();
@@ -277,6 +279,7 @@ async function recarregarListaAoVivo() {
     const paginaAtual = paginaParceiros;
 
     const promessaFotos = carregarFotosAutores();   // pega foto trocada no meio-tempo
+    const promessaOcultos = carregarUsuariosOcultos();
     const { data, error } = await supabaseClient
         .from('parceiros')
         .select('*, documentos(*)')
@@ -289,6 +292,7 @@ async function recarregarListaAoVivo() {
     }
     await esperarPerfilDaLista();
     await promessaFotos;
+    await promessaOcultos;
 
     dadosParceiros = montarLinhasDocumentos(data);
     aplicarFiltrosParceiros(); // mantém os filtros escolhidos pelo usuário
@@ -475,6 +479,8 @@ function veTodosOsTermos() {
  * banco, para o admin/visualizador na lista e para todos no Acompanhamento.
  */
 function termoVisivelNaLista(doc) {
+    // Termos de usuário oculto (conta do desenvolvedor) somem para os demais
+    if (usuarioOcultoParaMim(doc.criado_por)) return false;
     if (veTodosOsTermos()) return true;
     return !!doc.criado_por && doc.criado_por === _perfilAtual?.id && geradoHojeSebrae(doc);
 }
@@ -605,7 +611,7 @@ function corDoAutor(chave) {
 function celulaAutorDocumento(doc) {
     const nome = doc.criado_por_nome || '';
     const email = doc.criado_por_email || '';
-    if (!doc.criado_por && !nome && !email) {
+    if ((!doc.criado_por && !nome && !email) || usuarioOcultoParaMim(doc.criado_por)) {
         return '<span class="badge-dash" title="Autor não registrado (termo anterior ao controle de autoria ou gerado automaticamente)">—</span>';
     }
     // Com foto: a imagem cobre as iniciais; se não carregar, ela sai e as iniciais aparecem
@@ -840,7 +846,8 @@ function textoPesquisaLista() {
 function termosForaDaAreaDoOperador(pesquisa) {
     if (veTodosOsTermos() || !pesquisa) return 0;
     return dadosParceiros.filter(({ parceiro: p, doc }) =>
-        !termoVisivelNaLista(doc) && linhaCasaPesquisa(p, doc, pesquisa)).length;
+        !termoVisivelNaLista(doc) && !usuarioOcultoParaMim(doc.criado_por)
+        && linhaCasaPesquisa(p, doc, pesquisa)).length;
 }
 
 /**
@@ -894,7 +901,7 @@ async function popularFiltroUsuario() {
 
     const { data, error } = await supabaseClient
         .from('perfis_usuarios')
-        .select('id, nome_completo, email, role, ativo')
+        .select('id, nome_completo, email, role, ativo, oculto')
         .in('role', ['operador', 'admin'])
         .order('nome_completo');
     if (error) {
@@ -904,7 +911,7 @@ async function popularFiltroUsuario() {
     }
 
     const grupo = (rotulo, role) => {
-        const usuarios = (data || []).filter(u => u.role === role);
+        const usuarios = (data || []).filter(u => u.role === role && !(u.oculto && !veUsuariosOcultos()));
         if (!usuarios.length) return '';
         const opcoes = usuarios.map(u => {
             const nome = u.nome_completo || u.email;
@@ -934,8 +941,17 @@ function aplicarPermissoesDetalhe() {
 }
 
 /**
- * Mesma regra na lista de clientes: o botão "Novo Cliente" (cadastro temporário
- * dos testes) só aparece para quem pode editar.
+ * Botão "Novo Cliente" (cadastro temporário dos testes de envio): só para o
+ * Administrador SEBRAE (admin@sebrae.com.br) — decisão do desenvolvedor de
+ * 08/10/2026; em produção o cadastro é exclusivamente pelo FOCO.
+ */
+function podeCadastrarClienteTeste() {
+    return _perfilAtual?.role === 'admin' && _perfilAtual?.ativo === true
+        && ehAdminPrincipal(_perfilAtual);
+}
+
+/**
+ * Permissões visuais da lista de clientes.
  */
 function aplicarPermissoesLista() {
     // Operador pesquisa só na área de trabalho dele (termos dele de hoje)
@@ -955,10 +971,8 @@ function aplicarPermissoesLista() {
         }
     }
 
-    if (!usuarioPodeEditar()) return;
-
     const btnNovo = document.querySelector('.btn-novo-cliente');
-    if (btnNovo) btnNovo.style.display = '';
+    if (btnNovo) btnNovo.style.display = podeCadastrarClienteTeste() ? '' : 'none';
 }
 
 // ===== Cache leve de navegação (sessionStorage, stale-while-revalidate) =====
@@ -1681,6 +1695,7 @@ async function salvarEdicao(event) {
  * Abre o modal de cadastro de novo parceiro
  */
 function abrirModalCadastro() {
+    if (!podeCadastrarClienteTeste()) return;
     const modal = document.getElementById('modal-cadastro');
     if (modal) {
         modal.style.display = 'flex';
@@ -1728,6 +1743,7 @@ function mascaraCPF(input) {
  */
 async function cadastrarParceiro(event) {
     event.preventDefault();
+    if (!podeCadastrarClienteTeste()) return;
 
     const nome = document.getElementById('cad-nome').value.trim().toUpperCase();
     const cpf = document.getElementById('cad-cpf').value.trim();
@@ -2229,9 +2245,8 @@ function aplicarPermissoesDetalheComCache() {
     // Cada botão só existe na sua página; o seletor já resolve
     const btnEditar = document.querySelector('.btn-editar-parceiro');
     if (btnEditar) btnEditar.style.display = '';
-
-    const btnNovo = document.querySelector('.btn-novo-cliente');
-    if (btnNovo) btnNovo.style.display = '';
+    // "Novo Cliente" não sai do cache: o role não basta (só o Administrador
+    // SEBRAE o vê) — aplicarPermissoesLista() decide após carregar o perfil.
 }
 
 // ===== Inicialização =====
