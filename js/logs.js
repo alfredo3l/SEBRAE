@@ -407,20 +407,27 @@ async function carregarDestinatarios() {
         .order('nome', { ascending: true });
     if (error) {
         if (tratarErroDeSessao(error)) return;
-        tbody.innerHTML = `<tr><td colspan="4" class="rel-vazio">Erro ao carregar: ${escLog(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="rel-vazio">Erro ao carregar: ${escLog(error.message)}</td></tr>`;
         return;
     }
     _destinatarios = data || [];
     if (!_destinatarios.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="rel-vazio">Nenhum destinatário cadastrado — o relatório não é enviado até haver pelo menos um ativo.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="rel-vazio">Nenhum destinatário cadastrado — o relatório não é enviado até haver pelo menos um marcado.</td></tr>';
         return;
     }
+    // Caixa de marcação = recebe ou não o relatório (agendado e "Enviar agora").
+    // Facilita os testes: desmarcar não apaga o cadastro (08/10/2026).
     tbody.innerHTML = _destinatarios.map(d => `
         <tr class="${d.ativo ? '' : 'pausado'}">
+            <td class="rel-col-check">
+                <label class="rel-check" title="${d.ativo ? 'Desmarque para não receber' : 'Marque para receber'}">
+                    <input type="checkbox" ${d.ativo ? 'checked' : ''} onchange="marcarDestinatario('${d.id}', this)"
+                           aria-label="${escLog(d.nome)} recebe o relatório diário">
+                    <span>${d.ativo ? 'Recebe' : 'Não recebe'}</span>
+                </label>
+            </td>
             <td><strong>${escLog(d.nome)}</strong></td>
             <td><i class="fab fa-whatsapp" style="color:#16a34a;"></i> ${escLog(d.whatsapp)}</td>
-            <td><button type="button" class="rel-situacao ${d.ativo ? 'ativo' : ''}" onclick="alternarDestinatario('${d.id}')"
-                    title="${d.ativo ? 'Clique para pausar' : 'Clique para reativar'}">${d.ativo ? 'Recebendo' : 'Pausado'}</button></td>
             <td style="text-align:right;"><button type="button" class="rel-excluir" title="Excluir destinatário"
                     onclick="excluirDestinatario('${d.id}')"><i class="fas fa-trash"></i></button></td>
         </tr>`).join('');
@@ -474,14 +481,28 @@ async function adicionarDestinatario(event) {
     }
 }
 
+/** Caixa de marcação: grava "recebe / não recebe"; se falhar, desfaz a marcação */
+async function marcarDestinatario(id, caixa) {
+    const d = _destinatarios.find(x => x.id === id);
+    if (!d) return;
+    const novoAtivo = !!caixa.checked;
+    caixa.disabled = true;
+    const { error } = await supabaseClient.from('relatorio_logs_destinatarios').update({ ativo: novoAtivo }).eq('id', id);
+    if (error) {
+        caixa.checked = !novoAtivo;
+        caixa.disabled = false;
+        if (!tratarErroDeSessao(error)) mostrarMsgRelatorio('Erro ao alterar: ' + error.message, 'erro');
+        return;
+    }
+    mostrarMsgRelatorio(novoAtivo ? `${d.nome} vai receber o relatório.` : `${d.nome} não vai receber o relatório (cadastro mantido).`, 'ok');
+    await carregarDestinatarios();
+}
+
+/** Inverte a marcação (atalho usado por código; a tela usa a caixa) */
 async function alternarDestinatario(id) {
     const d = _destinatarios.find(x => x.id === id);
     if (!d) return;
-    const novoAtivo = !d.ativo;
-    const { error } = await supabaseClient.from('relatorio_logs_destinatarios').update({ ativo: novoAtivo }).eq('id', id);
-    if (error) { if (!tratarErroDeSessao(error)) mostrarMsgRelatorio('Erro ao alterar: ' + error.message, 'erro'); return; }
-    mostrarMsgRelatorio(novoAtivo ? `${d.nome} voltou a receber o relatório.` : `${d.nome} não vai mais receber o relatório (pausado).`, 'ok');
-    await carregarDestinatarios();
+    await marcarDestinatario(id, { checked: !d.ativo, disabled: false });
 }
 
 async function excluirDestinatario(id) {
@@ -490,7 +511,7 @@ async function excluirDestinatario(id) {
     const ok = await confirmarAcaoLogs({
         titulo: 'Excluir destinatário',
         texto: `<strong>${escLog(d.nome)}</strong> — WhatsApp ${escLog(d.whatsapp)} — deixará de receber o relatório diário.<br>`
-            + `<span style="font-size:0.83rem;">Para apenas suspender o envio, use <strong>Pausar</strong> em vez de excluir.</span>`,
+            + `<span style="font-size:0.83rem;">Para apenas suspender o envio, <strong>desmarque a caixa</strong> em vez de excluir.</span>`,
         tipo: 'perigo', icone: 'fas fa-trash', rotuloOk: 'Excluir'
     });
     if (!ok) return;
@@ -502,7 +523,7 @@ async function excluirDestinatario(id) {
 
 async function enviarRelatorioAgora() {
     const ativos = _destinatarios.filter(d => d.ativo).length;
-    if (!ativos) { mostrarMsgRelatorio('Cadastre (ou reative) pelo menos um destinatário antes de enviar.', 'erro'); return; }
+    if (!ativos) { mostrarMsgRelatorio('Marque pelo menos um destinatário (caixa "Recebe") antes de enviar.', 'erro'); return; }
     const ok = await confirmarAcaoLogs({
         titulo: 'Enviar relatório agora',
         texto: `O relatório de <strong>hoje (00:00 até agora)</strong> será enviado pelo WhatsApp para `

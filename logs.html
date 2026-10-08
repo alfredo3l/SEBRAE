@@ -71,8 +71,11 @@
         .relatorio-lista td, .relatorio-lista th { padding: 7px 8px; border-bottom: 1px solid #f1f5f9; text-align: left; }
         .relatorio-lista th { font-size: 0.72rem; text-transform: uppercase; color: #6b7280; letter-spacing: 0.3px; }
         .relatorio-lista .pausado td { color: #9ca3af; }
-        .rel-situacao { border: 1px solid #d1d5db; background: #fff; border-radius: 14px; padding: 2px 10px; font-size: 0.75rem; cursor: pointer; }
-        .rel-situacao.ativo { background: #dcfce7; border-color: #86efac; color: #166534; }
+        .rel-col-check { width: 130px; }
+        .rel-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8rem; color: #166534; font-weight: 600; margin: 0; user-select: none; }
+        .rel-check input { width: 18px; height: 18px; accent-color: #15803d; cursor: pointer; margin: 0; }
+        .rel-check input:disabled { cursor: wait; }
+        .pausado .rel-check { color: #9ca3af; font-weight: 500; }
         .rel-excluir { border: none; background: none; color: #dc2626; cursor: pointer; padding: 3px 6px; border-radius: 6px; }
         .rel-excluir:hover { background: #fee2e2; }
         .rel-vazio { color: #9ca3af; font-size: 0.85rem; padding: 6px 0; }
@@ -190,8 +193,8 @@
             </form>
             <div class="relatorio-msg" id="relatorio-msg" hidden></div>
             <table class="relatorio-lista">
-                <thead><tr><th>Nome</th><th>WhatsApp</th><th>Situação</th><th></th></tr></thead>
-                <tbody id="tbody-destinatarios"><tr><td colspan="4" class="rel-vazio">Carregando...</td></tr></tbody>
+                <thead><tr><th class="rel-col-check">Recebe?</th><th>Nome</th><th>WhatsApp</th><th></th></tr></thead>
+                <tbody id="tbody-destinatarios"><tr><td colspan="5" class="rel-vazio">Carregando...</td></tr></tbody>
             </table>
         </div>
 
