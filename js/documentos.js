@@ -1867,7 +1867,7 @@ async function inicializarPaginaDocumento() {
     const tituloPagina = varios ? 'Editar e Preencher Documentos' : TERMOS_URC[_docTipoAtivo].titulo;
     if (tituloEl) tituloEl.textContent = tituloPagina;
     if (formTituloEl) formTituloEl.textContent = TERMOS_URC[_docTipoAtivo].titulo;
-    document.title = `SEBRAE - TERMOS URC - ${tituloPagina}`;
+    document.title = `SEBRAE - ${tituloPagina}`;
 
     // Botões de navegação
     document.getElementById('btn-trocar-documento').href = `detalhe?id=${encodeURIComponent(id)}`;

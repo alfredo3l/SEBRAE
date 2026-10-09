@@ -45,6 +45,13 @@ body {
     font-weight: 600;
 }
 
+/* "Sistema de Gestão de Aceites de Termos" não cabe ao lado do usuário no celular */
+@media (max-width: 600px) {
+    .navbar-custom .navbar-brand span {
+        display: none;
+    }
+}
+
 .navbar-right {
     display: flex;
     align-items: center;
