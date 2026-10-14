@@ -48,32 +48,14 @@ function cpfDigitosValidos(nums) {
 }
 
 /**
- * Detecta se o termo digitado parece um CNPJ: 14 dígitos, com ou sem a máscara
- * 00.000.000/0000-00. Não há ambiguidade com telefone (com DDI 55 um celular
- * chega a 13 dígitos) — por isso, diferente do CPF, não exige dígito
- * verificador: CNPJ digitado errado volta vazio na hora, em vez de cair na
- * busca por telefone (~30 s).
- */
-function pareceCNPJ(termo) {
-    const t = String(termo).trim();
-    if (/[()+]/.test(t)) return false;
-    return /^[\d.\/\-\s]+$/.test(t) && t.replace(/\D/g, '').length === 14;
-}
-
-/** Formata CNPJ para o padrão 00.000.000/0000-00 (como o FOCO grava) */
-function formatarCNPJSebrae(valor) {
-    const nums = String(valor).replace(/\D/g, '');
-    return nums.length === 14
-        ? nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
-        : valor;
-}
-
-/**
  * Número incompleto (06/10/2026): antes de consultar o FOCO, um termo só com
  * dígitos e pontuação precisa ser um número COMPLETO — decisão do
- * desenvolvedor: CPF (11 dígitos), CNPJ (14) ou telefone COM DDD (10 ou 11;
- * 12–13 com o DDI 55). Antes, "009.85" caía na busca por nome no FOCO (15–40 s)
- * e "67992451" na busca por telefone (~30 s), sem achar o que se queria.
+ * desenvolvedor: CPF (11 dígitos) ou telefone COM DDD (10 ou 11; 12–13 com o
+ * DDI 55). Antes, "009.85" caía na busca por nome no FOCO (15–40 s) e
+ * "67992451" na busca por telefone (~30 s), sem achar o que se queria.
+ * A busca por CNPJ foi retirada em 14/10/2026 (pedido do SEBRAE): um CNPJ
+ * digitado (14 dígitos ou com barra) recebe aviso na hora, em vez de cair na
+ * busca por telefone e voltar vazio.
  * Devolve a mensagem para o usuário, ou null se o termo é buscável.
  */
 function avisoNumeroIncompleto(termo) {
@@ -82,24 +64,25 @@ function avisoNumeroIncompleto(termo) {
     const d = t.replace(/\D/g, '');
     const n = d.length;
     if (n === 0) return null;
-    const formatoDocumento = /[.\/]/.test(t);             // pontos/barra = CPF ou CNPJ
+    const formatoDocumento = /[.\/]/.test(t);             // pontos/barra = CPF (ou CNPJ)
     const formatoTelefone = /[()+]/.test(t);               // parênteses/+ = telefone
+    const avisoCNPJ = 'A busca por CNPJ não está disponível. Busque o cliente pelo nome, CPF ou telefone.';
 
     if (formatoDocumento) {
-        if (n === 11 || n === 14) return null;
-        if (n < 11) return `CPF incompleto: você digitou ${n} de 11 dígitos. Complete o CPF (ou o CNPJ, com 14 dígitos) para buscar no FOCO.`;
-        if (n < 14) return `CNPJ incompleto: você digitou ${n} de 14 dígitos. Complete o CNPJ para buscar no FOCO.`;
-        return `Número com dígitos a mais (${n}). Confira o CPF (11 dígitos) ou o CNPJ (14 dígitos).`;
+        if (n === 11 && !t.includes('/')) return null;
+        if (t.includes('/') || n === 14) return avisoCNPJ;
+        if (n < 11) return `CPF incompleto: você digitou ${n} de 11 dígitos. Complete o CPF para buscar no FOCO.`;
+        return `Número com dígitos a mais (${n}). Confira o CPF (11 dígitos).`;
     }
 
     if (n === 10 || n === 11) return null;                  // telefone com DDD (ou CPF só com dígitos)
-    if (!formatoTelefone && n === 14) return null;          // CNPJ só com dígitos
+    if (!formatoTelefone && n === 14) return avisoCNPJ;     // CNPJ só com dígitos
     if ((n === 12 || n === 13) && d.startsWith('55')) return null;   // telefone com DDI 55
 
     if (formatoTelefone) {
         return `Telefone incompleto: você digitou ${n} dígitos. Digite o telefone com DDD (10 ou 11 dígitos) para buscar no FOCO.`;
     }
-    return `Número incompleto: você digitou ${n} dígitos. Digite o CPF (11 dígitos), o CNPJ (14) ou o telefone com DDD (10 ou 11) para buscar no FOCO.`;
+    return `Número incompleto: você digitou ${n} dígitos. Digite o CPF (11 dígitos) ou o telefone com DDD (10 ou 11) para buscar no FOCO.`;
 }
 
 /**
@@ -113,7 +96,6 @@ function pareceTelefone(termo) {
 /**
  * Busca contatos na API SEBRAE/Salesforce via proxy local.
  * - Se parece CPF  → busca exata por CPF__c
- * - Se parece CNPJ → contatos da conta (Account.CNPJ__c — o CNPJ vive na conta)
  * - Se parece tel  → busca por Phone / MobilePhone
  * - Caso contrário → busca por Name (LIKE)
  *
@@ -125,13 +107,6 @@ async function buscarContatosSebrae(termo) {
     if (pareceCPF(termo)) {
         const cpfFormatado = formatarCPFSebrae(termo);
         return consultarContatosFoco(`SELECT FIELDS(ALL) FROM Contact WHERE CPF__c = '${cpfFormatado}' LIMIT 200`);
-    }
-
-    if (pareceCNPJ(termo)) {
-        // Campo indexado no FOCO (~0,6 s, medido em 06/10/2026). Grava com
-        // máscara; os dígitos corridos cobrem cadastro gravado sem ela.
-        const digitos = termo.replace(/\D/g, '');
-        return consultarContatosFoco(`SELECT ${CAMPOS_BUSCA_CONTATO} FROM Contact WHERE Account.CNPJ__c IN ('${formatarCNPJSebrae(digitos)}', '${digitos}') LIMIT 200`);
     }
 
     if (pareceTelefone(termo)) {

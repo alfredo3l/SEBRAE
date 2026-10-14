@@ -1879,7 +1879,7 @@ body {
 
 .doc-dasn-linha {
     display: grid;
-    grid-template-columns: 70px 1fr 100px 120px;
+    grid-template-columns: 70px 1fr 120px 120px;
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
@@ -3289,6 +3289,38 @@ body.troca-senha-ativa {
     border: 1px solid #d1d5db;
     border-radius: 6px;
     font-size: 0.9rem;
+}
+
+/* Campo de senha com o olho para mostrar/ocultar (Redefinir senha) */
+.campo-senha-olho {
+    position: relative;
+}
+
+.campo-senha-olho input {
+    padding-right: 40px;
+}
+
+.btn-olho-senha {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-olho-senha:hover,
+.btn-olho-senha:focus-visible {
+    color: #005EB8;
+    background: #f1f5f9;
 }
 
 .redefinir-senha-botoes {

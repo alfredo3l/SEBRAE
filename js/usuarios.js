@@ -321,9 +321,25 @@ function abrirRedefinirSenha() {
 
 function cancelarRedefinirSenha() {
     document.getElementById('usr-senha-temp').value = '';
-    document.getElementById('usr-senha-temp-conf').value = '';
+    alternarVisibilidadeSenhaTemp(false); // volta a esconder para o próximo uso
     document.getElementById('redefinir-senha-campos').hidden = true;
     document.getElementById('btn-abrir-redefinir').hidden = false;
+}
+
+/**
+ * Olho da senha temporária (14/10/2026, pedido do SEBRAE): mostra o que está
+ * sendo digitado — por isso o campo de confirmação foi retirado.
+ * Sem argumento alterna; com true/false força mostrar/esconder.
+ */
+function alternarVisibilidadeSenhaTemp(mostrar) {
+    const campo = document.getElementById('usr-senha-temp');
+    const btn = document.getElementById('btn-olho-senha-temp');
+    if (!campo || !btn) return;
+    const exibir = typeof mostrar === 'boolean' ? mostrar : campo.type === 'password';
+    campo.type = exibir ? 'text' : 'password';
+    btn.querySelector('i').className = exibir ? 'fas fa-eye-slash' : 'fas fa-eye';
+    btn.title = exibir ? 'Ocultar senha' : 'Mostrar senha';
+    btn.setAttribute('aria-label', btn.title);
 }
 
 // Avisa pelo WhatsApp o usuário (com a senha temporária) e os demais gestores
@@ -354,12 +370,10 @@ async function avisarSenhaRedefinida(usuarioId, senha) {
 async function confirmarRedefinirSenha() {
     const id = document.getElementById('usr-id').value;
     const senha = document.getElementById('usr-senha-temp').value;
-    const conf = document.getElementById('usr-senha-temp-conf').value;
     const u = todosUsuarios.find(x => x.id === id);
     if (!id || !u) return;
 
     if (senha.length < 8) return mostrarAlertaModal('A senha temporária deve ter no mínimo 8 caracteres.', 'erro');
-    if (senha !== conf) return mostrarAlertaModal('A confirmação não confere com a senha temporária.', 'erro');
 
     const btn = document.getElementById('btn-confirmar-redefinir');
     btn.disabled = true;

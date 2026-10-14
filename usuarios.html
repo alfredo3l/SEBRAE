@@ -558,8 +558,12 @@
                                 <i class="fas fa-key"></i> Redefinir senha
                             </button>
                             <div class="redefinir-senha-campos" id="redefinir-senha-campos" hidden>
-                                <input type="password" id="usr-senha-temp" placeholder="Senha temporária (mínimo 8 caracteres)" minlength="8" autocomplete="new-password">
-                                <input type="password" id="usr-senha-temp-conf" placeholder="Confirmar senha temporária" minlength="8" autocomplete="new-password">
+                                <div class="campo-senha-olho">
+                                    <input type="password" id="usr-senha-temp" placeholder="Senha temporária (mínimo 8 caracteres)" minlength="8" autocomplete="new-password">
+                                    <button type="button" class="btn-olho-senha" id="btn-olho-senha-temp" onclick="alternarVisibilidadeSenhaTemp()" title="Mostrar senha" aria-label="Mostrar senha">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
                                 <div class="redefinir-senha-botoes">
                                     <button type="button" class="btn-cancelar-modal" onclick="cancelarRedefinirSenha()">Cancelar</button>
                                     <button type="button" class="btn-salvar-modal" id="btn-confirmar-redefinir" onclick="confirmarRedefinirSenha()">

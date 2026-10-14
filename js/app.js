@@ -106,11 +106,15 @@ function linhaLGPDDoParceiro(p) {
 }
 
 /**
- * O cliente já teve alguma movimentação do Termo LGPD? As flags de `parceiros`
- * são o histórico do fluxo antigo; sem nenhuma delas, ele nunca teve o termo.
+ * O cliente já teve alguma movimentação do Termo LGPD NESTE sistema? As flags
+ * de `parceiros` são o histórico do fluxo antigo, mas só as DATAS provam
+ * atividade aqui: `termo_aceito`/`termo_aceito_foco` sem data são copiados do
+ * FOCO (TermoAceiteLGPD__c) pelo "Confirmar Cliente" — o cliente foi apenas
+ * consultado e não pode aparecer na área de trabalho (14/10/2026, pedido do
+ * SEBRAE). A marca continua gravada no cadastro; só não vira linha de termo.
  */
 function temHistoricoLGPD(p) {
-    return !!(p.termo_aceito || p.recusado || p.data_envio || p.data_aceite || p.data_recusa);
+    return !!(p.data_envio || p.data_aceite || p.data_recusa);
 }
 
 /**
@@ -1929,15 +1933,12 @@ async function executarBuscaParceiro() {
 
     // Mensagem de loading diferente para CPF x Nome/Telefone
     const ehCPF = typeof pareceCPF === 'function' && pareceCPF(termo);
-    const ehCNPJ = typeof pareceCNPJ === 'function' && pareceCNPJ(termo);
     const ehTelefone = typeof pareceTelefone === 'function' && pareceTelefone(termo);
     const textoOriginalLoading = loadingTextoEl ? loadingTextoEl.textContent : null;
 
     if (loadingTextoEl) {
         if (ehCPF) {
             loadingTextoEl.textContent = 'Buscando CPF...';
-        } else if (ehCNPJ) {
-            loadingTextoEl.textContent = 'Buscando CNPJ...';
         } else if (ehTelefone) {
             loadingTextoEl.textContent = 'Buscando telefone no FOCO...';
         } else {
@@ -1985,7 +1986,7 @@ async function executarBuscaParceiro() {
         const resultado = await buscarContatosSebrae(termo);
         const registros = resultado.records || [];
         void registrarLog('busca_foco', `Buscou no FOCO: "${termo}" (${registros.length} resultado(s))`, null, null,
-            { termo, tipo: ehCPF ? 'cpf' : ehCNPJ ? 'cnpj' : ehTelefone ? 'telefone' : 'nome', resultados: registros.length });
+            { termo, tipo: ehCPF ? 'cpf' : ehTelefone ? 'telefone' : 'nome', resultados: registros.length });
 
         resultadosBusca = registros.map(mapearContatoParaTabela);
         _buscaRegistrosPorCPF = {};

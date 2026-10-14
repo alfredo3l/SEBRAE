@@ -169,7 +169,7 @@ function blocoProcessoObservacoes(d) {
 }
 
 // ===== Catálogo dos termos =====
-// campo: { id, label, tipo: text|textarea|radio|check|checklist|debitos|dasn, auto, valor(ctx), opcoes, placeholder, mascara, full }
+// campo: { id, label, tipo: text|textarea|radio|check|checklist|debitos|dasn, auto, valor(ctx), opcoes, placeholder, mascara, full, obrigatorio }
 
 const TERMOS_URC = {
 
@@ -210,7 +210,7 @@ const TERMOS_URC = {
         campos: [
             ...camposBaseTermo(),
             { id: 'valor', label: 'Total do Valor Parcelado (R$)', placeholder: '0.000,00', mascara: 'moeda' },
-            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            { id: 'local', label: 'Local (cidade)' },
             { id: 'modalidade', label: 'Modalidade do parcelamento', tipo: 'radio', full: true, opcoes: [
                 'Parcelamento – Microempreendedor Individual – Máximo 60 meses',
                 'Parcelamento Especial – Microempreendedor Individual – Máximo 120 meses'
@@ -248,7 +248,7 @@ const TERMOS_URC = {
         campos: [
             ...camposBaseTermo(),
             { id: 'valor', label: 'Valor total do débito (R$)', placeholder: '0.000,00', mascara: 'moeda' },
-            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            { id: 'local', label: 'Local (cidade)' },
             { id: 'modalidade', label: 'Acesso ao Sistema de Negociações – Parcelamento ou Acordo de Transação – Máximo 60 meses', tipo: 'check', full: true },
             { id: 'incluir_nao_exigiveis', label: 'Solicitei ao SEBRAE que incluísse os débitos não exigíveis neste parcelamento.', tipo: 'check', full: true },
             CAMPO_OBSERVACOES
@@ -285,7 +285,7 @@ const TERMOS_URC = {
         descricao: 'Reenquadramento no Simples Nacional e SIMEI junto à Receita Federal do Brasil.',
         campos: [
             ...camposBaseTermo(),
-            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            { id: 'local', label: 'Local (cidade)' },
             { id: 'debitos', label: 'Anotações Importantes e Recomendações — débitos quitados/parcelados', tipo: 'debitos', full: true, opcoes: [
                 'Débitos Simples Nacional DAS-SIMEI',
                 'Débitos PGFN Inscritos em Dívida Ativa',
@@ -335,8 +335,9 @@ const TERMOS_URC = {
         descricao: 'Orientação para obtenção do registro na condição de Microempreendedor Individual.',
         campos: [
             ...camposBaseTermo(),
-            { id: 'rg', label: 'RG', placeholder: '000000000' },
-            { id: 'documentos', label: 'Documentos utilizados na emissão do certificado', tipo: 'checklist', full: true, opcoes: [
+            // Obrigatórios só na Formalização (14/10/2026, pedido do SEBRAE)
+            { id: 'rg', label: 'RG', placeholder: '000000000', obrigatorio: true },
+            { id: 'documentos', label: 'Documentos utilizados na emissão do certificado', tipo: 'checklist', full: true, obrigatorio: true, opcoes: [
                 'Guia de Localização Aprovada', 'CPF', 'RG', 'Comprovante de endereço',
                 'Título de eleitor', 'IRPF', 'E-mail', 'Senha do Portal GOV'
             ] },
@@ -373,7 +374,7 @@ const TERMOS_URC = {
         descricao: 'Orientação para Alteração do registro de Microempreendedor Individual.',
         campos: [
             ...camposBaseTermo(),
-            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            { id: 'local', label: 'Local (cidade)' },
             { id: 'documentos', label: 'Documentos utilizados na Alteração', tipo: 'checklist', full: true, opcoes: [
                 'Certificado de Condição de Microempreendedor Individual', 'Guia de Localização Aprovada',
                 'CPF', 'RG', 'Título Eleitoral', 'Comprovante de endereço', 'Senha do Portal GOV'
@@ -411,7 +412,7 @@ const TERMOS_URC = {
         campos: [
             ...camposBaseTermo(),
             { id: 'rg', label: 'RG', placeholder: '000000000' },
-            { id: 'local', label: 'Local (cidade)', placeholder: 'Campo Grande' },
+            { id: 'local', label: 'Local (cidade)' },
             // Checklist exatamente como no modelo oficial (sem "Outros")
             { id: 'documentos', label: 'Documentos utilizados na Baixa', tipo: 'checklist', full: true, opcoes: [
                 'Certificado de Condição de Microempreendedor Individual', 'CPF', 'RG', 'Título Eleitoral',
@@ -452,7 +453,7 @@ const TERMOS_URC = {
         descricao: 'Declaração Anual DASN SIMEI — Declaração Anual para o Microempreendedor Individual.',
         campos: [
             ...camposBaseTermo(),
-            { id: 'cidade', label: 'Cidade', placeholder: 'Campo Grande' },
+            { id: 'cidade', label: 'Cidade' },
             { id: 'anos', label: 'Declarações realizadas (até 5 anos)', tipo: 'dasn', full: true },
             { id: 'orientacao_irpf', label: 'Recebeu orientação para buscar profissional contábil (Declaração de IRPF)?', tipo: 'radio', full: true, opcoes: ['SIM', 'NÃO'] },
             CAMPO_OBSERVACOES
@@ -511,7 +512,7 @@ const CAMPOS_CLIENTE = ['telefone', 'email', 'cnpj'];
 
 /**
  * Estado de um documento do lote, criado sob demanda.
- *   tocado     → o consultor interagiu com o formulário nesta sessão
+ *   tocado     → o consultor abriu a aba ou interagiu com o formulário nesta sessão
  *   restaurado → os campos vieram de um registro já salvo (retomada)
  */
 function estadoDoc(slug) {
@@ -579,7 +580,7 @@ function renderCampoDocumento(campo, ctx) {
             <div class="doc-dasn-linha">
                 <input type="text" name="${campo.id}_${i}_ano" placeholder="Ano" class="doc-dasn-ano">
                 <input type="text" name="${campo.id}_${i}_valor" placeholder="Valor R$" class="doc-dasn-valor"${ATRIBUTOS_MOEDA}>
-                <input type="text" name="${campo.id}_${i}_hora" placeholder="hh:mm:ss" class="doc-dasn-hora">
+                <input type="text" name="${campo.id}_${i}_hora" placeholder="Hora (opcional)" title="Hora da declaração (opcional)" class="doc-dasn-hora">
                 <label class="doc-opcao doc-dasn-ret"><input type="checkbox" name="${campo.id}_${i}_ret"> Retificadora</label>
             </div>`;
         }
@@ -1033,6 +1034,55 @@ let _docWhatsApp = null;
 // trocar o telefone e retornar antes de a primeira resposta chegar)
 let _docWhatsAppTicket = 0;
 
+// Bloqueio do envio para telefone de usuário do sistema (14/10/2026):
+// { telefone, motivo, erro }. motivo = 'sem_whatsapp_proprio' | 'telefone_proprio'
+// | 'telefone_usuario' | null (liberado). A regra vale no banco
+// (preparar_envio_documento); aqui só antecipa o aviso e trava o botão.
+let _docBloqueio = null;
+
+const MENSAGENS_BLOQUEIO_ENVIO = {
+    sem_whatsapp_proprio: {
+        badge: 'Seu WhatsApp não cadastrado',
+        aviso: () => 'Para enviar termos, cadastre o <b>seu WhatsApp</b> no Meu Perfil. ' +
+            'Ele é usado para conferir que o termo não será enviado ao celular de quem está atendendo. ' +
+            '<a href="#" onclick="abrirPerfilParaWhatsApp(event)">Abrir Meu Perfil</a>'
+    },
+    telefone_proprio: {
+        badge: 'Telefone é o seu WhatsApp',
+        aviso: tel => `O telefone <b>${escHTML(tel || '—')}</b> é o <b>seu próprio WhatsApp</b>. ` +
+            'O termo deve ser enviado ao celular do cliente. Volte à edição e corrija o telefone do cliente.'
+    },
+    telefone_usuario: {
+        badge: 'Telefone de usuário do sistema',
+        aviso: tel => `O telefone <b>${escHTML(tel || '—')}</b> pertence a um <b>usuário do sistema</b>. ` +
+            'O termo deve ser enviado ao celular do próprio cliente. Volte à edição e corrija o telefone do cliente.'
+    }
+};
+
+/** Consulta no banco se o usuário logado pode enviar termos para o telefone (nunca lança) */
+async function verificarBloqueioEnvio(telefone) {
+    try {
+        const { data, error } = await supabaseClient.rpc('verificar_bloqueio_envio', { p_telefone: telefone });
+        if (error) return { telefone, motivo: null, erro: error.message };
+        return { telefone, motivo: data || null, erro: null };
+    } catch (e) {
+        return { telefone, motivo: null, erro: e?.message || String(e) };
+    }
+}
+
+/** Refaz as conferências do envio para o telefone atual do formulário */
+function reverificarEnvio() {
+    const d = dadosContatoAtuais();
+    verificarWhatsAppParaEnvio(formatarTelefoneParaCadastro(d.telefone || _docParceiro.telefone || ''));
+}
+
+/** Atalho do aviso "Seu WhatsApp não cadastrado": abre o Meu Perfil no campo do WhatsApp */
+function abrirPerfilParaWhatsApp(event) {
+    if (event) event.preventDefault();
+    if (typeof abrirModalPerfil !== 'function') return;
+    abrirModalPerfil().then(() => document.getElementById('perfil-whatsapp')?.focus());
+}
+
 /**
  * Monta o payload enviado ao n8n: dados do cliente, do documento, os campos
  * preenchidos pelo consultor e o HTML já renderizado do termo (pronto para
@@ -1140,6 +1190,7 @@ function validarDadosEnvio() {
         { label: 'Telefone válido', ok: telefone.replace(/\D/g, '').length >= 10 },
         // Preenchido depois pela verificação assíncrona (ver mostrarTelaEnvio)
         badgeWhatsApp(_docWhatsApp, telefone),
+        badgeBloqueio(_docBloqueio, telefone),
         { label: 'E-mail válido', ok: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) },
         { label: total > 1 ? `${total} documentos gerados` : 'Documento gerado', ok: true, neutro: true }
     ];
@@ -1158,13 +1209,25 @@ function badgeWhatsApp(r, telefone) {
     return { id, label: 'WhatsApp não verificado', ok: true, neutro: true };
 }
 
+/**
+ * Badge do bloqueio por telefone de usuário: pendente, ok, erro (bloqueado)
+ * ou neutro (consulta falhou — o banco ainda barra no envio).
+ */
+function badgeBloqueio(r, telefone) {
+    const id = 'usuario';
+    if (!r || r.telefone !== telefone) return { id, label: 'Conferindo telefone…', pendente: true };
+    if (r.motivo) return { id, label: MENSAGENS_BLOQUEIO_ENVIO[r.motivo]?.badge || 'Envio bloqueado', ok: false };
+    if (r.erro) return { id, label: 'Telefone não conferido', ok: true, neutro: true };
+    return { id, label: 'Telefone do próprio cliente', ok: true };
+}
+
 /** Desenha os badges de validação da etapa de envio */
 function renderValidacoesEnvio(itens) {
     const cont = document.getElementById('envio-validacoes');
     cont.innerHTML = itens.map(v => {
         let cls, icone;
         if (v.pendente) { cls = 'validacao-badge-warn'; icone = 'spinner fa-spin'; }
-        else if (v.neutro) { cls = 'validacao-badge-warn'; icone = v.id === 'whatsapp' ? 'question' : 'file-lines'; }
+        else if (v.neutro) { cls = 'validacao-badge-warn'; icone = (v.id === 'whatsapp' || v.id === 'usuario') ? 'question' : 'file-lines'; }
         else if (v.ok) { cls = 'validacao-badge-success'; icone = 'check'; }
         else { cls = 'validacao-badge-danger'; icone = 'times'; }
         const attr = v.id ? ` data-validacao="${v.id}"` : '';
@@ -1186,15 +1249,21 @@ async function verificarWhatsAppParaEnvio(telefone) {
     // Sem telefone utilizável nem vale a viagem: fica bloqueado
     if (telefone.replace(/\D/g, '').length < 10) {
         _docWhatsApp = { telefone, ok: true, exists: false, whatsapp: null, jid: null, motivo: 'telefone inválido' };
+        _docBloqueio = { telefone, motivo: null, erro: null };
         aplicarResultadoWhatsApp(telefone);
         return;
     }
 
     btn.disabled = true;
-    const r = await verificarWhatsApp(telefone);
+    // Resultado anterior não vale: o selo volta a "Conferindo" até a resposta nova
+    _docBloqueio = null;
+    renderValidacoesEnvio(validarDadosEnvio());
+    // WhatsApp (Evolution) e bloqueio por telefone de usuário (banco) em paralelo
+    const [r, bloqueio] = await Promise.all([verificarWhatsApp(telefone), verificarBloqueioEnvio(telefone)]);
     if (ticket !== _docWhatsAppTicket) return; // resposta velha: outra verificação já começou
 
     _docWhatsApp = r;
+    _docBloqueio = bloqueio;
     aplicarResultadoWhatsApp(telefone);
 }
 
@@ -1205,6 +1274,21 @@ function aplicarResultadoWhatsApp(telefone) {
     const r = _docWhatsApp;
 
     renderValidacoesEnvio(validarDadosEnvio());
+
+    // Telefone de usuário do sistema / consultor sem WhatsApp: bloqueia antes de tudo
+    const motivoBloqueio = (_docBloqueio && _docBloqueio.telefone === telefone) ? _docBloqueio.motivo : null;
+    if (motivoBloqueio) {
+        btn.disabled = true;
+        aviso.className = 'documento-aviso documento-aviso-erro';
+        aviso.innerHTML = '<i class="fas fa-ban"></i> Envio não permitido. ' +
+            (MENSAGENS_BLOQUEIO_ENVIO[motivoBloqueio]?.aviso(telefone) || '') +
+            // Depois de cadastrar o próprio WhatsApp, refaz a conferência sem sair da tela
+            (motivoBloqueio === 'sem_whatsapp_proprio'
+                ? ' · <a href="#" onclick="event.preventDefault(); reverificarEnvio()">Verificar novamente</a>'
+                : '');
+        aviso.style.display = 'block';
+        return;
+    }
 
     if (r && r.exists === false) {
         btn.disabled = true;
@@ -1292,6 +1376,7 @@ async function prepararEnvioDocumento(slug) {
 
         if (error) {
             console.warn('preparar_envio_documento:', error.message);
+            estadoDoc(slug).erroPreparo = error.message; // ex.: bloqueio por telefone de usuário
             return null;
         }
         const registro = Array.isArray(data) ? data[0] : data;
@@ -1302,16 +1387,8 @@ async function prepararEnvioDocumento(slug) {
     }
 }
 
-/**
- * Clique em "Gerar (todos) e prosseguir": com alguma pendência de
- * preenchimento/revisão abre o modal de confirmação; sem pendência, gera direto.
- */
+/** Clique em "Gerar (todos) e prosseguir" */
 async function gerarTodosEProsseguir() {
-    const grupos = pendenciasDoLote();
-    if (grupos.length) {
-        abrirModalPendencias(grupos);
-        return;
-    }
     await executarGeracao();
 }
 
@@ -1319,8 +1396,17 @@ async function gerarTodosEProsseguir() {
  * Gera todos os documentos selecionados e avança para a etapa de envio.
  * Diferente do fluxo antigo, os registros são gravados COM await: cada id
  * alimenta a RPC que reserva a letra de resposta no envio.
+ * Pendência BLOQUEIA (14/10/2026, pedido do SEBRAE): com campo obrigatório em
+ * branco ou aba não aberta, nada é gravado — só abre o modal com o que falta.
+ * A trava fica aqui, no único caminho que grava, e não só no botão.
  */
 async function executarGeracao() {
+    const grupos = pendenciasDoLote();
+    if (grupos.length) {
+        abrirModalPendencias(grupos);
+        return;
+    }
+
     const btn = document.getElementById('btn-gerar-documento');
     btn.disabled = true;
     btn.querySelector('.btn-text').style.display = 'none';
@@ -1424,6 +1510,11 @@ async function confirmarEnvioEmLote() {
         aplicarResultadoWhatsApp(_docWhatsApp.telefone);
         return;
     }
+    // Telefone de usuário do sistema: não grava o contato, não reserva letra nem envia
+    if (_docBloqueio && _docBloqueio.motivo) {
+        aplicarResultadoWhatsApp(_docBloqueio.telefone);
+        return;
+    }
 
     btn.disabled = true;
     btn.querySelector('.btn-text').style.display = 'none';
@@ -1487,10 +1578,12 @@ async function confirmarEnvioEmLote() {
             }
 
             // Marca como enviado e reserva a letra de resposta (A, B, C...)
+            est.erroPreparo = null;
             const codigo = await prepararEnvioDocumento(slug);
             if (!codigo) {
-                // Sem letra o cliente não teria como responder — não envia
-                falhas.push({ slug, motivo: 'não foi possível reservar a letra de resposta' });
+                // Sem letra o cliente não teria como responder — não envia.
+                // A recusa do banco (ex.: telefone de usuário) aparece como motivo.
+                falhas.push({ slug, motivo: est.erroPreparo || 'não foi possível reservar a letra de resposta' });
                 continue;
             }
 
@@ -1584,7 +1677,7 @@ function mostrarResultadoEnvio(enviados, falhas, avisoContato = '') {
         aviso.className = 'documento-aviso documento-aviso-erro';
         aviso.innerHTML = falhas.length > 1
             ? `Nenhum documento foi enviado.<ul>${falhas.map(linhaFalha).join('')}</ul>`
-            : `Erro ao enviar o documento: ${escHTML(falhas[0].motivo)}. Tente novamente.`;
+            : `Erro ao enviar o documento: ${escHTML(String(falhas[0].motivo).replace(/\.\s*$/, ''))}. Tente novamente.`;
     } else {
         aviso.className = 'documento-aviso documento-aviso-alerta';
         aviso.innerHTML = `<b>Enviados ${enviados.length} de ${enviados.length + falhas.length}.</b>` +
@@ -1600,8 +1693,9 @@ function mostrarResultadoEnvio(enviados, falhas, avisoContato = '') {
 
 // ===== Abas dos documentos selecionados (Tela 3 da POC) =====
 
-// Campos que podem ficar em branco sem que a aba conte como pendente
-const CAMPOS_OPCIONAIS_DOC = ['observacoes', 'documentos_outros', 'rg'];
+// Campos que podem ficar em branco sem que a aba conte como pendente.
+// E-mail é opcional (decisão de 14/10/2026): sem ele o trecho some do termo.
+const CAMPOS_OPCIONAIS_DOC = ['observacoes', 'documentos_outros', 'rg', 'email'];
 
 /** Monta a barra de abas — só aparece quando há 2 ou mais documentos */
 function montarAbasDocumentos() {
@@ -1629,6 +1723,9 @@ function montarAbasDocumentos() {
 function ativarAbaDocumento(slug) {
     if (!TERMOS_URC[slug]) return;
     _docTipoAtivo = slug;
+    // Abrir a aba conta como revisão: o consultor viu o termo, mesmo que não
+    // tenha nada a preencher nele (ex.: LGPD, só com telefone/e-mail do cadastro)
+    estadoDoc(slug).tocado = true;
 
     _docTipos.forEach(s => {
         const form = formDoDocumento(s);
@@ -1664,7 +1761,7 @@ function ativarAbaDocumento(slug) {
  * nas tabelas Débitos/DASN só conta linha iniciada e não concluída, ou a
  * tabela inteira vazia — célula vazia isolada não é pendência.
  * opcoes.incluirRevisao (padrão true): inclui "formulário não revisado"
- * (nenhuma interação do consultor e sem dados restaurados de registro salvo).
+ * (aba nunca aberta pelo consultor e sem dados restaurados de registro salvo).
  */
 function pendenciasDoDocumento(slug, { incluirRevisao = true } = {}) {
     const termo = TERMOS_URC[slug];
@@ -1679,7 +1776,7 @@ function pendenciasDoDocumento(slug, { incluirRevisao = true } = {}) {
     if (incluirRevisao) {
         const est = estadoDoc(slug);
         if (!est.tocado && !est.restaurado) {
-            itens.push({ campo: null, rotulo: 'Formulário', motivo: 'não revisado — nenhum campo foi conferido' });
+            itens.push({ campo: null, rotulo: 'Formulário', motivo: 'não revisado — abra a aba deste documento e confira os dados' });
         }
     }
 
@@ -1687,7 +1784,10 @@ function pendenciasDoDocumento(slug, { incluirRevisao = true } = {}) {
         switch (campo.tipo) {
             case 'check':
             case 'checklist':
-                // não marcar é resposta válida
+                // não marcar é resposta válida — salvo campo "obrigatorio" (ao menos 1)
+                if (campo.obrigatorio && !form.querySelector(`input[type="checkbox"][name^="${campo.id}_"]:checked`)) {
+                    itens.push({ campo: `${campo.id}_0`, rotulo: campo.label, motivo: 'marque ao menos um documento' });
+                }
                 break;
 
             case 'radio':
@@ -1725,13 +1825,15 @@ function pendenciasDoDocumento(slug, { incluirRevisao = true } = {}) {
                     }
                 }
                 if (!algum) {
-                    itens.push({ campo: `${campo.id}_0_ano`, rotulo: campo.label, motivo: 'nenhuma declaração informada' });
+                    itens.push({ campo: `${campo.id}_0_ano`, rotulo: campo.label, motivo: 'informe ao menos um ano com o valor declarado' });
                 }
                 break;
             }
 
             default: { // text | textarea
-                if (campo.auto || campo.autoFoco || CAMPOS_OPCIONAIS_DOC.includes(campo.id)) break;
+                if (campo.auto || campo.autoFoco) break;
+                // "obrigatorio" no catálogo vence a lista de opcionais (ex.: RG da Formalização)
+                if (!campo.obrigatorio && CAMPOS_OPCIONAIS_DOC.includes(campo.id)) break;
                 const input = el(campo.id);
                 if (!input || input.readOnly || input.tagName === 'SELECT') break;
                 if (!temValor(input.value)) {
@@ -1767,19 +1869,18 @@ function montarListaPendencias(grupos) {
         `<li><b>${escHTML(TERMOS_URC[g.slug].titulo)}</b>${linhas(g.itens)}</li>`).join('') + '</ul>';
 }
 
-/** Abre o modal de confirmação com as pendências do lote */
+/** Abre o modal (bloqueante) com as pendências do lote */
 function abrirModalPendencias(grupos) {
     _pendenciasLote = grupos;
     const modal = document.getElementById('modal-pendencias');
     const lista = document.getElementById('modal-pendencias-lista');
-    if (!modal || !lista) { // sem o modal na página, nunca travar o fluxo
-        executarGeracao();
+    if (!modal || !lista) { // sem o modal na página: avisa e não gera
+        alert('Preencha as informações obrigatórias antes de gerar o documento.');
         return;
     }
     lista.innerHTML = montarListaPendencias(grupos);
     modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
-    // Foco no "Revisar": Enter jamais dispara a geração
     document.getElementById('btn-pendencias-revisar')?.focus();
 }
 
@@ -1809,12 +1910,6 @@ function focarCampoDocumento(slug, nome) {
     if (!alvo) return;
     alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
     alvo.focus({ preventScroll: true });
-}
-
-/** "Gerar mesmo assim": segue o fluxo normal de geração */
-function gerarMesmoAssim() {
-    fecharModalPendencias();
-    executarGeracao();
 }
 
 // ESC fecha o modal de pendências (o listener de app.js só conhece os modais do cadastro)
