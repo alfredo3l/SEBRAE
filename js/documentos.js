@@ -1034,28 +1034,18 @@ let _docWhatsApp = null;
 // trocar o telefone e retornar antes de a primeira resposta chegar)
 let _docWhatsAppTicket = 0;
 
-// Bloqueio do envio para telefone de usuário do sistema (14/10/2026):
-// { telefone, motivo, erro }. motivo = 'sem_whatsapp_proprio' | 'telefone_proprio'
-// | 'telefone_usuario' | null (liberado). A regra vale no banco
+// Bloqueio do envio para o telefone de quem envia (14/10/2026; desde 15/10/2026
+// só o PRÓPRIO WhatsApp do usuário logado — números de outros usuários e quem
+// não cadastrou o WhatsApp ficam liberados): { telefone, motivo, erro }.
+// motivo = 'telefone_proprio' | null (liberado). A regra vale no banco
 // (preparar_envio_documento); aqui só antecipa o aviso e trava o botão.
 let _docBloqueio = null;
 
 const MENSAGENS_BLOQUEIO_ENVIO = {
-    sem_whatsapp_proprio: {
-        badge: 'Seu WhatsApp não cadastrado',
-        aviso: () => 'Para enviar termos, cadastre o <b>seu WhatsApp</b> no Meu Perfil. ' +
-            'Ele é usado para conferir que o termo não será enviado ao celular de quem está atendendo. ' +
-            '<a href="#" onclick="abrirPerfilParaWhatsApp(event)">Abrir Meu Perfil</a>'
-    },
     telefone_proprio: {
         badge: 'Telefone é o seu WhatsApp',
         aviso: tel => `O telefone <b>${escHTML(tel || '—')}</b> é o <b>seu próprio WhatsApp</b>. ` +
             'O termo deve ser enviado ao celular do cliente. Volte à edição e corrija o telefone do cliente.'
-    },
-    telefone_usuario: {
-        badge: 'Telefone de usuário do sistema',
-        aviso: tel => `O telefone <b>${escHTML(tel || '—')}</b> pertence a um <b>usuário do sistema</b>. ` +
-            'O termo deve ser enviado ao celular do próprio cliente. Volte à edição e corrija o telefone do cliente.'
     }
 };
 
@@ -1068,19 +1058,6 @@ async function verificarBloqueioEnvio(telefone) {
     } catch (e) {
         return { telefone, motivo: null, erro: e?.message || String(e) };
     }
-}
-
-/** Refaz as conferências do envio para o telefone atual do formulário */
-function reverificarEnvio() {
-    const d = dadosContatoAtuais();
-    verificarWhatsAppParaEnvio(formatarTelefoneParaCadastro(d.telefone || _docParceiro.telefone || ''));
-}
-
-/** Atalho do aviso "Seu WhatsApp não cadastrado": abre o Meu Perfil no campo do WhatsApp */
-function abrirPerfilParaWhatsApp(event) {
-    if (event) event.preventDefault();
-    if (typeof abrirModalPerfil !== 'function') return;
-    abrirModalPerfil().then(() => document.getElementById('perfil-whatsapp')?.focus());
 }
 
 /**
@@ -1275,17 +1252,13 @@ function aplicarResultadoWhatsApp(telefone) {
 
     renderValidacoesEnvio(validarDadosEnvio());
 
-    // Telefone de usuário do sistema / consultor sem WhatsApp: bloqueia antes de tudo
+    // Telefone do cliente é o WhatsApp de quem envia: bloqueia antes de tudo
     const motivoBloqueio = (_docBloqueio && _docBloqueio.telefone === telefone) ? _docBloqueio.motivo : null;
     if (motivoBloqueio) {
         btn.disabled = true;
         aviso.className = 'documento-aviso documento-aviso-erro';
         aviso.innerHTML = '<i class="fas fa-ban"></i> Envio não permitido. ' +
-            (MENSAGENS_BLOQUEIO_ENVIO[motivoBloqueio]?.aviso(telefone) || '') +
-            // Depois de cadastrar o próprio WhatsApp, refaz a conferência sem sair da tela
-            (motivoBloqueio === 'sem_whatsapp_proprio'
-                ? ' · <a href="#" onclick="event.preventDefault(); reverificarEnvio()">Verificar novamente</a>'
-                : '');
+            (MENSAGENS_BLOQUEIO_ENVIO[motivoBloqueio]?.aviso(telefone) || '');
         aviso.style.display = 'block';
         return;
     }
