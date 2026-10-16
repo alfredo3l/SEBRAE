@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await popularFiltroUsuarioLogs();
     void carregarDestinatarios();
     void carregarUltimoEnvio();
+    document.getElementById('log-incluir-admin').addEventListener('change', filtrarLogs);
     document.getElementById('log-texto').addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); filtrarLogs(); }
     });
@@ -91,6 +92,9 @@ function preencherPeriodoPadraoLogs() {
     document.getElementById('log-de').value = dataISOSebrae(new Date(hoje.getTime() - 6 * 86400000));
 }
 
+// Id do Administrador SEBRAE (admin@sebrae.com.br), para a caixa "Incluir registros do Administrador SEBRAE"
+let _idAdminSebraeLogs = null;
+
 async function popularFiltroUsuarioLogs() {
     const sel = document.getElementById('log-usuario');
     const { data, error } = await supabaseClient
@@ -101,6 +105,7 @@ async function popularFiltroUsuarioLogs() {
     const grupoPessoas = document.createElement('optgroup');
     grupoPessoas.label = 'Usuários';
     (data || []).forEach(u => {
+        if ((u.email || '').toLowerCase() === EMAIL_GESTOR_SENHAS) _idAdminSebraeLogs = u.id;
         const op = document.createElement('option');
         op.value = u.id;
         op.textContent = `${u.nome_completo} — ${u.email}${u.ativo ? '' : ' (inativo)'}`;
@@ -116,13 +121,16 @@ async function popularFiltroUsuarioLogs() {
     });
     sel.appendChild(grupoPessoas);
     sel.appendChild(grupoAuto);
+    // Multisseleção com busca pelo nome/e-mail (js/multi-filtro.js); vale ao clicar em Filtrar
+    criarMultiFiltro(sel, { placeholder: 'Todos' });
 }
 
 function filtrosLogs() {
     return {
         de: document.getElementById('log-de').value,
         ate: document.getElementById('log-ate').value,
-        usuario: document.getElementById('log-usuario').value,
+        usuarios: valoresMultiFiltro('log-usuario'),   // [] = Todos
+        incluirAdmin: document.getElementById('log-incluir-admin').checked,
         categoria: document.getElementById('log-categoria').value,
         texto: document.getElementById('log-texto').value.trim()
     };
@@ -132,8 +140,19 @@ function filtrosLogs() {
 function aplicarFiltrosLogs(q, f) {
     if (f.de) q = q.gte('criado_em', new Date(`${f.de}T00:00:00-04:00`).toISOString());
     if (f.ate) q = q.lt('criado_em', new Date(new Date(`${f.ate}T00:00:00-04:00`).getTime() + 86400000).toISOString());
-    if (f.usuario.startsWith('ator:')) q = q.eq('ator', f.usuario.slice(5));
-    else if (f.usuario) q = q.eq('usuario_id', f.usuario);
+    // Usuários e atores automáticos marcados somam (OU) entre si
+    const ids = f.usuarios.filter(v => !v.startsWith('ator:'));
+    const atores = f.usuarios.filter(v => v.startsWith('ator:')).map(v => v.slice(5));
+    if (ids.length && atores.length) q = q.or(`usuario_id.in.(${ids.join(',')}),ator.in.(${atores.join(',')})`);
+    else if (ids.length) q = q.in('usuario_id', ids);
+    else if (atores.length) q = q.in('ator', atores);
+    // Ações do Administrador SEBRAE ficam de fora, salvo com a caixa marcada ou ele escolhido
+    // no filtro "Usuário" (os registros continuam gravados; é só o que a tabela mostra)
+    const adminEscolhido = _idAdminSebraeLogs && ids.includes(_idAdminSebraeLogs);
+    if (!f.incluirAdmin && !adminEscolhido) {
+        q = q.or(`usuario_email.is.null,usuario_email.not.ilike.${EMAIL_GESTOR_SENHAS}`);
+        if (_idAdminSebraeLogs) q = q.or(`usuario_id.is.null,usuario_id.neq.${_idAdminSebraeLogs}`);
+    }
     if (f.categoria) q = q.eq('categoria', f.categoria);
     if (f.texto) {
         // Vírgula, parênteses e asterisco têm significado no filtro "or" do PostgREST
@@ -155,7 +174,8 @@ function filtrarLogs() {
 
 function limparFiltrosLogs() {
     preencherPeriodoPadraoLogs();
-    document.getElementById('log-usuario').value = '';
+    limparMultiFiltro('log-usuario');
+    document.getElementById('log-incluir-admin').checked = false;
     document.getElementById('log-categoria').value = '';
     document.getElementById('log-texto').value = '';
     _logsPagina = 1;

@@ -24,6 +24,9 @@
 
         .filter-group input[type="date"] { min-width: 150px; }
         .logs-acoes-filtro { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+        .logs-check-admin { display: flex; align-items: center; gap: 8px; align-self: flex-end; margin: 0; padding: 9px 4px; font-size: 0.86rem; color: #374151; cursor: pointer; white-space: nowrap; }
+        .logs-check-admin input { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: #003087; }
+        @media (max-width: 600px) { .logs-check-admin { white-space: normal; } }
         .logs-erro { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.86rem; }
 
         .linha-log { cursor: pointer; }
@@ -178,7 +181,8 @@
                     <h3><i class="fab fa-whatsapp"></i> Relatório diário por WhatsApp</h3>
                     <p>Um PDF com o resumo e os eventos do período é enviado de <strong>segunda a sexta às 17:00</strong> (horário de MS),
                        exceto feriados nacionais, de MS e de Campo Grande. Cada relatório cobre desde o envio anterior —
-                       o de segunda inclui o fim de semana. Dia sem movimento também é enviado, avisando que não houve atividade.</p>
+                       o de segunda inclui o fim de semana. Dia sem movimento também é enviado, avisando que não houve atividade.
+                       As ações do Administrador SEBRAE não entram no relatório (continuam registradas aqui).</p>
                     <div class="relatorio-ultimo" id="relatorio-ultimo">Último envio: —</div>
                 </div>
                 <button type="button" class="btn-relatorio-agora" id="btn-relatorio-agora" onclick="enviarRelatorioAgora()"
@@ -235,6 +239,10 @@
                     <label for="log-texto"><i class="fas fa-search"></i> Pesquisar</label>
                     <input type="text" id="log-texto" placeholder="Texto da descrição, nome, e-mail ou IP (ex.: nome do cliente)">
                 </div>
+                <label class="logs-check-admin" title="Os registros do Administrador SEBRAE continuam gravados; aqui só se escolhe se aparecem na tabela. O relatório diário por WhatsApp nunca os inclui.">
+                    <input type="checkbox" id="log-incluir-admin">
+                    Incluir registros do Administrador SEBRAE
+                </label>
                 <div class="logs-acoes-filtro">
                     <button class="btn-filtrar" onclick="filtrarLogs()">
                         <i class="fas fa-filter"></i> Filtrar
@@ -393,6 +401,7 @@
     <!-- Foto de Perfil -->
     <script src="js/perfil.js"></script>
     <!-- Gestão de Usuários -->
+    <script src="js/multi-filtro.js"></script>
     <script src="js/logs.js"></script>
 </body>
 </html>
